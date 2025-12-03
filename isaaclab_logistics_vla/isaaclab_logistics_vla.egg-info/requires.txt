@@ -1,0 +1,9 @@
+numpy<2
+torch>=2.7
+torchvision>=0.14.1
+protobuf!=5.26.0,>=4.25.8
+toml>=0.10.2
+tensorboard
+transformers>=4.30.0
+sentencepiece>=0.1.99
+pillow>=9.0.0

@@ -1,0 +1,31 @@
+Metadata-Version: 2.4
+Name: isaaclab_logistics_vla
+Version: 0.1.0
+Summary: Extension containing logistics VLA benchmark tasks for robot learning.
+Home-page: https://github.com/your-repo/IsaacLab-Logistics-VLA
+Author: Isaac Lab Logistics VLA Developers
+Maintainer: Isaac Lab Logistics VLA Developers
+Keywords: robotics,vla,logistics,manipulation,language
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Isaac Sim :: 4.5.0
+Classifier: Isaac Sim :: 5.0.0
+Requires-Python: >=3.10
+Requires-Dist: numpy<2
+Requires-Dist: torch>=2.7
+Requires-Dist: torchvision>=0.14.1
+Requires-Dist: protobuf!=5.26.0,>=4.25.8
+Requires-Dist: toml>=0.10.2
+Requires-Dist: tensorboard
+Requires-Dist: transformers>=4.30.0
+Requires-Dist: sentencepiece>=0.1.99
+Requires-Dist: pillow>=9.0.0
+Dynamic: author
+Dynamic: classifier
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: maintainer
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary

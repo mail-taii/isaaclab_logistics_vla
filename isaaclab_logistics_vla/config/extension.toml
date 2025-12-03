@@ -1,0 +1,24 @@
+[package]
+
+# Note: Semantic Versioning is used: https://semver.org/
+version = "0.1.0"
+
+# Description
+title = "Isaac Lab Logistics VLA Benchmark"
+description = "Extension containing logistics VLA benchmark tasks for robot learning."
+readme = "docs/README.md"
+repository = "https://github.com/your-repo/IsaacLab-Logistics-VLA"
+category = "robotics"
+keywords = ["robotics", "vla", "logistics", "manipulation", "language"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_assets" = {}
+"isaaclab_tasks" = {}
+
+[core]
+reloadable = false
+
+[[python.module]]
+name = "isaaclab_logistics_vla"
+
