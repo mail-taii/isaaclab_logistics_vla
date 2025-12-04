@@ -118,27 +118,6 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
     )
 
-    # Tiled相机：旋转轨道视角，用于录制视频
-    # 注意：TiledCameraCfg 会自动创建相机，不需要单独的 CameraCfg
-    tiled_camera_top = TiledCameraCfg(
-        prim_path="{ENV_REGEX_NS}/orbital_camera",
-        update_period=0.1,
-        height=720,
-        width=1280,
-        data_types=["rgb"],
-        spawn=sim_utils.PinholeCameraCfg(
-            focal_length=24.0,
-            focus_distance=400.0,
-            horizontal_aperture=20.955,
-            clipping_range=(0.1, 1.0e5),
-        ),
-        offset=TiledCameraCfg.OffsetCfg(
-            pos=(-2.0, -0.49, 4.0),  # 固定位置：用户推荐的视角（提高高度）
-            rot=(0.707, -0.707, 0.0, 0.0),  # 初始朝向：看向场景中心
-            convention="world",
-        ),
-    )
-
 
 ##
 # MDP settings
