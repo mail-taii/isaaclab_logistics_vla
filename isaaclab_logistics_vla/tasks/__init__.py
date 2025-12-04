@@ -1,0 +1,10 @@
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""Package containing logistics VLA task implementations."""
+
+# Import all task sub-packages to ensure Gym environment registration
+from . import realman_lift  # noqa: F401
+from . import single_arm_sorting  # noqa: F401
