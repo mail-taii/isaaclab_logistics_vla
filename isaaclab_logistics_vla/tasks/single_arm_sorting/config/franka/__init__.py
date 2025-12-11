@@ -127,7 +127,7 @@ class FrankaSingleArmSortingEnvCfg(SingleArmSortingEnvCfg):
 
 gym.register(
     id="Isaac-Logistics-SingleArmSorting-Franka-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    entry_point="isaaclab_logistics_vla.tasks.single_arm_sorting.single_arm_sorting_env:SingleArmSortingEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}:FrankaSingleArmSortingEnvCfg",

@@ -59,3 +59,24 @@ def target_position_in_robot_root_frame(
     target_pos_b, _ = subtract_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, target_pos_w)
     return target_pos_b
 
+
+def scene_rgb_image(
+    env: ManagerBasedRLEnv,
+    camera_cfg: SceneEntityCfg = SceneEntityCfg("scene_camera"),
+) -> torch.Tensor:
+    """获取场景RGB图像（场景画面）。
+    
+    Args:
+        env: 环境实例
+        camera_cfg: 相机配置
+        
+    Returns:
+        RGB图像，形状为 (num_envs, height, width, 3)
+    """
+    from isaaclab.sensors import TiledCamera
+    
+    camera: TiledCamera = env.scene[camera_cfg.name]
+    # 获取RGB图像（使用 output 字典）
+    rgb_image = camera.data.output["rgb"]  # RGB图像，已经是3通道
+    return rgb_image
+

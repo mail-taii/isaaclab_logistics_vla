@@ -11,4 +11,5 @@ from isaaclab.envs.mdp import *  # noqa: F401, F403
 # Import task-specific functions
 from .observations import *  # noqa: F401, F403
 from .rewards import *  # noqa: F401, F403
+from .metrics import *  # noqa: F401, F403
 

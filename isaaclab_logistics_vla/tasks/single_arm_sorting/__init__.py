@@ -9,6 +9,7 @@ This task implements task 3.1.1-1: Single arm sorting of light random small SKU 
 """
 
 from .single_arm_sorting_env_cfg import SingleArmSortingEnvCfg
+from .single_arm_sorting_env import SingleArmSortingEnv
 
-__all__ = ["SingleArmSortingEnvCfg"]
+__all__ = ["SingleArmSortingEnvCfg", "SingleArmSortingEnv"]
 
