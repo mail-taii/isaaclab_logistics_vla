@@ -1,1 +1,14 @@
-.history/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.DS_Store       # Mac 系统特有
+Thumbs.db       # Windows 系统特有
+
+.vscode/
+.idea/
+
+venv/
+env/
+.env
