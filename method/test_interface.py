@@ -140,12 +140,48 @@ def main():
         return
     
     # 持续运行直到应用关闭
-    print(f"\n开始持续运行（使用随机动作）...")
+    print(f"\n开始持续运行（使用IK控制到目标物品位置）...")
     print("提示：脚本会持续运行，直到应用关闭（流直播时会一直运行）")
     print("可以通过 WebRTC 流直播查看机器人运动\n")
     
+    # 获取场景对象
+    scene = env.unwrapped.scene
+    robot = scene["robot"]
+    device = env.unwrapped.device
+    
+    # 验证环境信息是否可访问（benchmark必须功能）
+    print("\n验证环境信息可访问性...")
+    try:
+        object_rigid = scene["object"]
+        print(f"✓ 物品对象可访问: {type(object_rigid).__name__}")
+        if hasattr(object_rigid.data, "object_pos_w"):
+            print(f"  object_pos_w shape: {object_rigid.data.object_pos_w.shape}")
+            print(f"  object_quat_w shape: {object_rigid.data.object_quat_w.shape}")
+        else:
+            print("  (提示) RigidObjectCollection 没有 root_pos_w，请用 object_pos_w/object_quat_w 或 get_active_object_pose_w")
+    except Exception as e:
+        print(f"✗ 无法访问物品对象: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    try:
+        ee_frame = scene["ee_frame"]
+        print(f"✓ 末端执行器帧可访问: {type(ee_frame).__name__}")
+        # 使用与observations.py相同的方式：target_pos_w[..., 0, :] 获取第一个target frame（left_ee_tcp）
+        ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]  # [num_envs, 3]
+        ee_quat_w = ee_frame.data.target_quat_w[..., 0, :]  # [num_envs, 4]
+        print(f"  left_ee_tcp pos_w shape: {ee_pos_w.shape}")
+        print(f"  left_ee_tcp quat_w shape: {ee_quat_w.shape}")
+    except Exception as e:
+        print(f"✗ 无法访问末端执行器帧: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print(f"✓ 环境数量: {scene.num_envs}")
+    print(f"✓ 动作空间维度: {env.action_space.shape[0]}")
+    print()
+    
     # 获取机器人初始关节状态（用于对比）
-    robot = env.unwrapped.scene["robot"]
     prev_joint_pos = robot.data.joint_pos.clone()
     step_count = 0
     
@@ -153,9 +189,103 @@ def main():
     while simulation_app.is_running():
         step_count += 1
         
-        # 生成随机动作（使用更大的范围，让动作更明显）
+        # 读取目标物品的位置和旋转
         with torch.inference_mode():
-            action = (torch.rand(env.action_space.shape, device=env.unwrapped.device) - 0.5) * 2.0
+            try:
+                object_rigid = scene["object"]
+                if hasattr(object_rigid.data, "object_pos_w"):
+                    # RigidObjectCollection: 使用 collection 数据
+                    env_ids = torch.arange(scene.num_envs, device=device)
+                    active_ids = getattr(env.unwrapped, "_active_object_indices", None)
+                    if active_ids is None or active_ids.numel() != scene.num_envs:
+                        active_ids = torch.zeros(scene.num_envs, dtype=torch.long, device=device)
+                    object_pos = object_rigid.data.object_pos_w[env_ids, active_ids]
+                    object_quat = object_rigid.data.object_quat_w[env_ids, active_ids]
+                else:
+                    # 单个 RigidObject 兼容路径
+                    object_pos = object_rigid.data.root_pos_w[:, :3]
+                    object_quat = object_rigid.data.root_quat_w
+                
+                # shape 校验
+                if object_pos.dim() != 2 or object_pos.shape[1] != 3:
+                    raise ValueError(f"object_pos shape should be [num_envs, 3], got: {object_pos.shape}")
+                num_envs = object_pos.shape[0]
+                
+                # 获取当前末端执行器位置（用于插值，使运动更平滑）
+                # 使用与observations.py相同的方式：target_pos_w[..., 0, :] 获取第一个target frame（left_ee_tcp）
+                try:
+                    ee_frame = scene["ee_frame"]
+                    current_ee_pos = ee_frame.data.target_pos_w[..., 0, :]  # [num_envs, 3]
+                    current_ee_rot = ee_frame.data.target_quat_w[..., 0, :]  # [num_envs, 4]
+                    
+                    # 确保形状正确
+                    if current_ee_pos.dim() != 2 or current_ee_pos.shape[1] != 3:
+                        raise ValueError(f"current_ee_pos shape should be [num_envs, 3], got: {current_ee_pos.shape}")
+                    if current_ee_rot.dim() != 2 or current_ee_rot.shape[1] != 4:
+                        raise ValueError(f"current_ee_rot shape should be [num_envs, 4], got: {current_ee_rot.shape}")
+                except (KeyError, AttributeError, ValueError) as e:
+                    # 如果获取不到当前末端位置，直接使用目标位置
+                    if step_count % 50 == 0:
+                        print(f"⚠️  无法获取末端位置，使用默认值: {e}")
+                    current_ee_pos = object_pos.clone()
+                    # 创建一个默认的四元数 [1, 0, 0, 0] (无旋转)
+                    current_ee_rot = torch.zeros((num_envs, 4), device=device, dtype=object_pos.dtype)
+                    current_ee_rot[:, 0] = 1.0  # w=1
+                
+                # 设置抓取姿态：末端执行器垂直向下（适合抓取）
+                # 四元数 (w, x, y, z) = (1, 0, 0, 0) 表示无旋转（默认姿态）
+                grasp_rot = torch.zeros((num_envs, 4), device=device, dtype=object_pos.dtype)
+                grasp_rot[:, 0] = 1.0  # w=1, 无旋转
+                
+                # 目标位置：物品位置上方一点（便于抓取）
+                target_pos = object_pos.clone()
+                target_pos[:, 2] += 0.05  # 在物品上方5cm
+                
+                # 小步长插值，使运动更平滑
+                alpha = 0.1  # 插值系数，可以调整运动速度
+                interp_pos = current_ee_pos + alpha * (target_pos - current_ee_pos)
+                interp_rot = current_ee_rot + alpha * (grasp_rot - current_ee_rot)
+                # 归一化四元数
+                interp_rot = interp_rot / torch.linalg.norm(interp_rot, dim=-1, keepdim=True).clamp(min=1e-6)
+                
+                # 确保插值后的形状正确
+                if interp_pos.dim() != 2 or interp_pos.shape[1] != 3:
+                    raise ValueError(f"interp_pos shape should be [num_envs, 3], got: {interp_pos.shape}")
+                if interp_rot.dim() != 2 or interp_rot.shape[1] != 4:
+                    raise ValueError(f"interp_rot shape should be [num_envs, 4], got: {interp_rot.shape}")
+                
+                # 构造末端执行器目标位姿：[x, y, z, qw, qx, qy, qz]
+                target_pose = torch.cat([interp_pos, interp_rot], dim=-1)  # shape: [num_envs, 7]
+                
+                # 确保 target_pose 形状正确
+                if target_pose.dim() != 2 or target_pose.shape[1] != 7:
+                    raise ValueError(f"target_pose shape should be [num_envs, 7], got: {target_pose.shape}")
+                
+                # 构造完整动作向量
+                # 动作空间格式：[left_arm_pose(7), right_arm_pose(7), gripper(?)]
+                total_dim = env.action_space.shape[0]
+                action = torch.zeros((num_envs, total_dim), device=device, dtype=target_pose.dtype)
+                
+                # 填充左手臂目标位姿（前7维）
+                if total_dim >= 7:
+                    action[:, :7] = target_pose
+                else:
+                    # 如果动作空间小于7维，只填充前total_dim维
+                    action[:, :total_dim] = target_pose[:, :total_dim]
+                
+                # 如果有右手臂，可以设置为相同位置或保持不动（设为0）
+                # 如果有夹爪，可以设置为打开状态（根据实际情况调整）
+                
+            except Exception as e:
+                # 如果获取物品位置失败，使用随机动作作为fallback
+                import traceback
+                if step_count % 50 == 0:  # 只在每50步输出一次错误，避免刷屏
+                    print(f"⚠️  无法获取物品位置，使用随机动作: {e}")
+                    print(f"    错误类型: {type(e).__name__}")
+                    traceback.print_exc()
+                # 确保随机动作的形状正确
+                num_envs = env.unwrapped.scene.num_envs
+                action = (torch.rand((num_envs, env.action_space.shape[0]), device=device) - 0.5) * 2.0
         
         # 执行动作
         try:
@@ -174,7 +304,25 @@ def main():
                 else:
                     reward_val = float(reward)
                 
+                # 获取物品和末端执行器位置（用于调试）
+                try:
+                    object_pos = scene["object"].data.root_pos_w[0, :3].cpu().numpy()
+                    ee_frame = scene["ee_frame"]
+                    left_ee_tcp = ee_frame.get_target_frame("left_ee_tcp")
+                    ee_pos = left_ee_tcp.data.pos_w[0].cpu().numpy()
+                    distance = torch.norm(left_ee_tcp.data.pos_w[0] - scene["object"].data.root_pos_w[0, :3]).item()
+                except:
+                    object_pos = None
+                    ee_pos = None
+                    distance = None
+                
                 print(f"\n[步骤 {step_count}] 关节位置变化: {joint_diff.item():.6f}, 奖励: {reward_val:.4f}")
+                if object_pos is not None:
+                    print(f"  物品位置: [{object_pos[0]:.3f}, {object_pos[1]:.3f}, {object_pos[2]:.3f}]")
+                if ee_pos is not None:
+                    print(f"  末端位置: [{ee_pos[0]:.3f}, {ee_pos[1]:.3f}, {ee_pos[2]:.3f}]")
+                if distance is not None:
+                    print(f"  末端到物品距离: {distance:.3f}m")
                 
                 if "log" in info and "metrics" in info["log"]:
                     metrics = info["log"]["metrics"]

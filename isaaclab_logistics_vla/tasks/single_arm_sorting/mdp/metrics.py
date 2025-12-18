@@ -20,6 +20,8 @@ from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import FrameTransformer
 
+from ..object_randomization import get_active_object_pose_w
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
@@ -41,16 +43,15 @@ def is_object_grasped(
     Returns:
         A boolean tensor (num_envs,) indicating whether each environment has successfully grasped the object.
     """
-    object: RigidObject = env.scene[object_cfg.name]
     ee_frame: FrameTransformer = env.scene[ee_frame_cfg.name]
     
     # Distance between object and end-effector
-    object_pos_w = object.data.root_pos_w
+    object_pos_w, _ = get_active_object_pose_w(env, object_cfg)
     ee_pos_w = ee_frame.data.target_pos_w[..., 0, :]
     distance = torch.norm(object_pos_w - ee_pos_w, dim=1)
     
     # Check if object is lifted (above a minimal height to confirm grasp)
-    is_lifted = object.data.root_pos_w[:, 2] > 0.02
+    is_lifted = object_pos_w[:, 2] > 0.02
     
     # Object is considered grasped if close to end-effector and lifted
     return (distance < threshold) & is_lifted
@@ -81,16 +82,9 @@ def is_intent_correct(
     Returns:
         A boolean tensor (num_envs,) indicating whether each environment follows the correct intent.
     """
-    object: RigidObject = env.scene[object_cfg.name]
-    
-    # Get object position
-    object_pos_w = object.data.root_pos_w
-    
-    # Source area position (fixed position from scene config)
-    source_pos_w = torch.tensor([0.5, 0.0, 0.0], device=object_pos_w.device).unsqueeze(0).repeat(object_pos_w.shape[0], 1)
-    
-    # Target area position (fixed position from scene config)
-    target_pos_w = torch.tensor([0.0, 0.5, 0.0], device=object_pos_w.device).unsqueeze(0).repeat(object_pos_w.shape[0], 1)
+    object_pos_w, _ = get_active_object_pose_w(env, object_cfg)
+    source_pos_w = env.scene[source_cfg.name].data.root_pos_w[:, :3]
+    target_pos_w = env.scene[target_cfg.name].data.root_pos_w[:, :3]
     
     # Calculate distances
     dist_to_source = torch.norm(object_pos_w - source_pos_w, dim=1)
@@ -127,13 +121,8 @@ def is_task_completed(
     Returns:
         A boolean tensor (num_envs,) indicating whether each environment has completed the task.
     """
-    object: RigidObject = env.scene[object_cfg.name]
-    
-    # Get object position
-    object_pos_w = object.data.root_pos_w
-    
-    # Target area position (fixed position from scene config)
-    target_pos_w = torch.tensor([0.0, 0.5, 0.0], device=object_pos_w.device).unsqueeze(0).repeat(object_pos_w.shape[0], 1)
+    object_pos_w, _ = get_active_object_pose_w(env, object_cfg)
+    target_pos_w = env.scene[target_cfg.name].data.root_pos_w[:, :3]
     
     # Calculate distance to target
     distance_to_target = torch.norm(object_pos_w[:, :2] - target_pos_w[:, :2], dim=1)  # Only x, y distance
@@ -146,6 +135,16 @@ def is_task_completed(
     
     # Task is completed if object is at target and at correct height
     return is_at_target & is_at_height
+
+
+def active_object_height_below_minimum(
+    env: ManagerBasedRLEnv,
+    minimum_height: float,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+) -> torch.Tensor:
+    """Helper termination: true if当前焦点物体低于阈值."""
+    object_pos_w, _ = get_active_object_pose_w(env, object_cfg)
+    return object_pos_w[:, 2] < minimum_height
 
 
 def compute_grasping_success_rate(

@@ -38,6 +38,110 @@ class SingleArmSortingEnv(ManagerBasedRLEnv):
             **kwargs: Additional arguments passed to parent class.
         """
         super().__init__(cfg, **kwargs)
+        # Track当前每个环境的“焦点”物体索引（支持集合形式的物体随机化）
+        self._active_object_indices = torch.zeros(self.scene.num_envs, dtype=torch.long, device=self.device)
+        
+        # 确保USD场景中的所有物体都有碰撞检测
+        # 修复物体穿透USD场景的问题
+        # 关键：机器人有碰撞（因为是Articulation），地面有碰撞（因为是GroundPlane）
+        # 但USD文件中的静态物体可能没有RigidBodyAPI，需要手动添加
+        try:
+            import isaaclab.sim.schemas as schemas
+            import isaaclab.sim.schemas.schemas_cfg as schemas_cfg
+            from pxr import UsdPhysics
+            
+            # 为USD场景中的所有物体定义碰撞属性
+            # 这会递归应用到所有子prim
+            for env_idx in range(self.scene.num_envs):
+                env_ns = f"/World/envs/env_{env_idx}"
+                base_scene_path = f"{env_ns}/BaseScene"
+                
+                # 检查prim是否存在
+                prim = self.sim.stage.GetPrimAtPath(base_scene_path)
+                if prim and prim.IsValid():
+                    # 递归为所有子prim定义碰撞属性
+                    def ensure_collision_for_prim(prim_path: str):
+                        """递归为prim及其所有子prim定义碰撞属性"""
+                        try:
+                            prim = self.sim.stage.GetPrimAtPath(prim_path)
+                            if not prim or not prim.IsValid():
+                                return
+                            
+                            # 跳过已经有关节的prim（如机器人）
+                            if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+                                return
+                            
+                            # 如果有mesh或geometry，确保有碰撞
+                            has_geometry = False
+                            for child in prim.GetChildren():
+                                if child.GetTypeName() in ["Mesh", "Cylinder", "Sphere", "Cube", "Capsule"]:
+                                    has_geometry = True
+                                    break
+                            
+                            # 如果prim有几何体，确保有刚体和碰撞属性
+                            if has_geometry or prim.GetTypeName() in ["Mesh", "Cylinder", "Sphere", "Cube", "Capsule"]:
+                                # 定义刚体属性（如果还没有）
+                                if not prim.HasAPI(UsdPhysics.RigidBodyAPI):
+                                    schemas.define_rigid_body_properties(
+                                        prim_path,
+                                        schemas_cfg.RigidBodyPropertiesCfg(
+                                            kinematic_enabled=False,
+                                            rigid_body_enabled=True,
+                                            solver_position_iteration_count=32,  # 提高碰撞精度
+                                            solver_velocity_iteration_count=1,
+                                        ),
+                                        stage=self.sim.stage,
+                                    )
+                                
+                                # 定义碰撞属性（如果还没有）
+                                if not prim.HasAPI(UsdPhysics.CollisionAPI):
+                                    schemas.define_collision_properties(
+                                        prim_path,
+                                        schemas_cfg.CollisionPropertiesCfg(
+                                            collision_enabled=True,
+                                            contact_offset=0.005,  # 接触偏移量，提高碰撞检测敏感度
+                                            rest_offset=0.0,
+                                        ),
+                                        stage=self.sim.stage,
+                                    )
+                            
+                            # 递归处理子prim
+                            for child in prim.GetChildren():
+                                ensure_collision_for_prim(str(child.GetPath()))
+                        except Exception as e:
+                            # 忽略单个prim的错误，继续处理其他prim
+                            pass
+                    
+                    ensure_collision_for_prim(base_scene_path)
+        except Exception as e:
+            # 如果修改失败，记录警告但不中断初始化
+            print(f"[WARNING] Failed to ensure collision for USD scene: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # 强制设置 platform_joint 的位置，确保身体部分升高
+        # 这可以确保即使初始状态设置没有生效，也能在环境初始化后强制设置
+        # 注意：目标位置应该与初始配置中的位置一致，避免机器人移动
+        try:
+            robot = self.scene["robot"]
+            if "platform_joint" in robot.joint_names:
+                platform_joint_idx = robot.joint_names.index("platform_joint")
+                # 使用与初始配置一致的位置 (0.9m from config)
+                # 这样机器人就不会在初始化时移动
+                target_platform_pos = torch.full((self.scene.num_envs, 1), 0.9, device=self.device)
+                joint_ids = torch.tensor([platform_joint_idx], device=self.device)
+                # 设置目标位置和当前位置，确保一致
+                if hasattr(robot, "set_joint_position_target"):
+                    robot.set_joint_position_target(target_platform_pos, joint_ids=joint_ids)
+                if hasattr(robot, "set_joint_position"):
+                    robot.set_joint_position(target_platform_pos, joint_ids=joint_ids)
+                print(f"[INFO] 设置 platform_joint 目标位置为 0.9m (索引: {platform_joint_idx})，与初始配置一致")
+            else:
+                print(f"[WARNING] platform_joint 不在关节列表中，可用关节: {robot.joint_names[:10]}...")
+        except Exception as e:
+            print(f"[WARNING] 无法设置 platform_joint 位置: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Initialize metric tracking buffers
         # These track the best (or final) state achieved during each episode
@@ -84,51 +188,27 @@ class SingleArmSortingEnv(ManagerBasedRLEnv):
         """Step the environment and update metrics.
         
         Args:
-            action: Actions to apply.
+            action: Actions to apply. Should be in the format expected by the action manager.
+                   For Differential IK actions, this should be [x, y, z, qw, qx, qy, qz, ...] for each arm.
             
         Returns:
             A tuple containing observations, rewards, terminated, truncated, and extras.
             The extras dictionary includes the metrics.
         """
-        # 使用差分 IK：将末端执行器目标设为 source 区域位置（绝对位姿），并做小步长插值与限幅
-        source_area = self.scene["source_area"]
-        target_pos = source_area.data.root_pos_w
-        target_rot = source_area.data.root_quat_w
-
-        # 当前末端位姿（用于插值）
-        try:
-            ee_frame = self.scene["ee_frame"]
-            current_pos = ee_frame.data.root_pos_w
-            current_rot = ee_frame.data.root_quat_w
-        except (KeyError, AttributeError):
-            # 兜底：若未找到 ee_frame，则使用 target 作为当前值
-            current_pos = target_pos.clone()
-            current_rot = target_rot.clone()
-
-        # 目标姿态添加轻微扰动，让轨迹更自然
-        pos_noise = torch.randn_like(target_pos) * self.action_noise_std
-        rot_noise = torch.randn_like(target_rot) * 0.0  # 暂不扰动旋转，保持对准
-
-        # 位置限幅：以 source 为中心，xy 限制 ±0.25m，z 限制在 [0.2, 1.2]
-        bbox_min = target_pos + torch.tensor([-0.25, -0.25, -0.2], device=self.device)
-        bbox_max = target_pos + torch.tensor([0.25, 0.25, 0.3], device=self.device)
-        clipped_pos = torch.clamp(target_pos + pos_noise, min=bbox_min, max=bbox_max)
-
-        # 小步长插值，避免一次跃迁过大
-        alpha = 0.05
-        interp_pos = current_pos + alpha * (clipped_pos - current_pos)
-        interp_rot = current_rot + alpha * (target_rot + rot_noise - current_rot)
-        interp_rot = interp_rot / torch.linalg.norm(interp_rot, dim=-1, keepdim=True).clamp(min=1e-6)
-
-        target_pose = torch.cat([interp_pos, interp_rot], dim=-1)
-
-        # 将目标位姿填入完整动作向量（匹配 action_manager.total_action_dim）
-        num_envs = target_pose.shape[0]
+        # 直接使用传入的action，不再硬编码到source_area
+        # 这样外部策略（如测试脚本或训练的策略）可以完全控制机器人
+        # 如果action维度不匹配，进行适当的填充或截断
+        num_envs = action.shape[0]
         total_dim = self.action_manager.total_action_dim
-        full_action = torch.zeros((num_envs, total_dim), device=self.device, dtype=target_pose.dtype)
-        # 假设前 7 维是末端位姿命令，其余（如夹爪等）保持为 0
-        full_action[:, : target_pose.shape[1]] = target_pose
-        action = full_action
+        
+        if action.shape[1] < total_dim:
+            # 如果action维度不足，用0填充
+            full_action = torch.zeros((num_envs, total_dim), device=self.device, dtype=action.dtype)
+            full_action[:, :action.shape[1]] = action
+            action = full_action
+        elif action.shape[1] > total_dim:
+            # 如果action维度过多，截断
+            action = action[:, :total_dim]
         
         # Step the environment
         obs, reward, terminated, truncated, extras = super().step(action)
@@ -194,6 +274,8 @@ class SingleArmSortingEnv(ManagerBasedRLEnv):
         self._was_grasped_buf.fill_(False)
         self._intent_correct_buf.fill_(False)
         self._task_completed_buf.fill_(False)
+        if hasattr(self, "_active_object_indices"):
+            self._active_object_indices.zero_()
         
         return obs, extras
 

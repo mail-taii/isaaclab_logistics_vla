@@ -12,7 +12,7 @@ from ... import mdp
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.assets.articulation import ArticulationCfg
-from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
+from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg, OffsetCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 import isaaclab.sim as sim_utils
@@ -72,8 +72,21 @@ FRANKA_LOGISTICS_CFG = ArticulationCfg(
 )
 
 # End-effector frame
+# NOTE:
+# Isaac Lab's FrameTransformerCfg requires `target_frames` to be specified.
+# For this single-arm Franka setup, we simply track the TCP frame of the panda hand itself.
 FRANKA_EE_FRAME_CFG = FrameTransformerCfg(
+    # Source frame (we use the hand link as the source frame)
     prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
+    # Target frames to track w.r.t. the source frame.
+    # Here we track the same hand link, with an optional small TCP offset if needed in the future.
+    target_frames=[
+        FrameTransformerCfg.FrameCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/panda_hand",
+            name="ee_tcp",
+            offset=OffsetCfg(),  # identity offset; can be tuned if a TCP offset is desired
+        )
+    ],
     debug_vis=False,
 )
 
@@ -91,6 +104,9 @@ class FrankaSingleArmSortingEnvCfg(SingleArmSortingEnvCfg):
         # Call parent post_init
         super().__post_init__()
 
+        # --------------------------------------------------------------------- #
+        # Scene: robot and task objects
+        # --------------------------------------------------------------------- #
         # Override scene to add robot and object
         self.scene.robot = FRANKA_LOGISTICS_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.object = RigidObjectCfg(
@@ -103,9 +119,38 @@ class FrankaSingleArmSortingEnvCfg(SingleArmSortingEnvCfg):
             ),
         )
 
+        # Override source / target areas to be rigid objects (not just XForm prims)
+        # so that metrics / observations can use `.data` safely.
+        self.scene.source_area = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/SourceArea",
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[-0.04, 2.0, 0.60], rot=[0.707, 0.0, 0.0, 0.707]),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.5, 0.35, 0.01),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True, kinematic_enabled=False),
+                mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+            ),
+        )
+        self.scene.target_area = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/TargetArea",
+            init_state=RigidObjectCfg.InitialStateCfg(pos=[0.4, 2.0, 0.60], rot=[0.707, 0.0, 0.0, 0.707]),
+            spawn=sim_utils.CuboidCfg(
+                size=(0.5, 0.35, 0.01),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True, kinematic_enabled=False),
+                mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
+            ),
+        )
+
+        # --------------------------------------------------------------------- #
+        # Sensors / frames
+        # --------------------------------------------------------------------- #
         # Add end-effector frame
         self.scene.ee_frame = FRANKA_EE_FRAME_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot/panda_hand")
 
+        # --------------------------------------------------------------------- #
+        # Actions
+        # --------------------------------------------------------------------- #
         # Override actions
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",

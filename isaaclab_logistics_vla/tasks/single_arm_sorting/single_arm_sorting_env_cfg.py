@@ -12,15 +12,17 @@ to category-divided staging compartments.
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg, RigidObjectCollectionCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
+from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
@@ -39,20 +41,36 @@ class SingleArmSortingSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = MISSING  # Will be set by agent env cfg
 
     # Small SKU package (light random small package)
-    object: RigidObjectCfg = MISSING  # Will be set by agent env cfg
+    object: RigidObjectCfg | RigidObjectCollectionCfg = MISSING  # Will be set by agent env cfg
+
+    # End-effector frame (used by observations / rewards / metrics)
+    # Concrete agents (e.g. Franka, Realman) must set this to a valid FrameTransformerCfg.
+    ee_frame: FrameTransformerCfg = MISSING
 
     # Source area (where packages start)
     source_area = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/SourceArea",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[-0.04,1.48,0.91], rot=[0.707, 0, 0, 0.707]),
-        spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=[-0.04, 2.0, 0.60],
+            rot=[0.707, 0, 0, 0.707],
+        ),
+        spawn=UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
+            scale=(1.5, 1.5, 1.0),  # ← 在 X/Y 方向放大 1.5 倍
+        ),
     )
 
     # Target area (staging compartments)
     target_area = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/TargetArea",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=[0.4, 1.48, 0.91], rot=[0.707, 0, 0, 0.707]),
-        spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+        init_state=AssetBaseCfg.InitialStateCfg(
+            pos=[0.4, 2.0, 0.60],
+            rot=[0.707, 0, 0, 0.707],
+        ),
+        spawn=UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
+            scale=(1.5, 1.5, 1.0),  # ← 同样放大
+        ),
     )
 
     # Ground plane
@@ -148,8 +166,35 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
     object_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum,
-        params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")},
+        func=mdp.active_object_height_below_minimum,
+        params={"minimum_height": -0.05, "object_cfg": SceneEntityCfg("object")},
+    )
+
+
+@configclass
+class EventCfg:
+    """Configuration for randomization events."""
+
+    # Randomize base object position around source area on each reset
+    randomize_object_position = EventTerm(
+        func=mdp.randomize_object_positions,
+        mode="reset",
+        params={
+            "object_cfg": SceneEntityCfg("object"),
+            "source_cfg": SceneEntityCfg("source_area"),
+            "pos_range": ((-0.1, 0.1), (-0.1, 0.1), (0.0, 0.1)),
+        },
+    )
+
+    # Placeholder for mass / scale randomization (no-op but keeps API)
+    randomize_object_properties = EventTerm(
+        func=mdp.randomize_object_properties,
+        mode="reset",
+        params={
+            "object_cfg": SceneEntityCfg("object"),
+            "mass_range": (0.05, 0.2),
+            "scale_range": (0.8, 1.2),
+        },
     )
 
 
@@ -175,6 +220,8 @@ class SingleArmSortingEnvCfg(ManagerBasedRLEnvCfg):
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
+    # Re-enable generic randomization events for object position / properties
+    events: EventCfg = EventCfg()
 
     def __post_init__(self):
         """Post initialization."""
