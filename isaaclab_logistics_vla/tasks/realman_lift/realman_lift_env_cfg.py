@@ -269,6 +269,8 @@ class CurriculumCfg:
 @configclass
 class LiftEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment."""
+    # def __init__(self):
+    #     super.__init__()
 
     # Scene settings
     scene: ObjectTableSceneCfg = ObjectTableSceneCfg(num_envs=2, env_spacing=2.0)
