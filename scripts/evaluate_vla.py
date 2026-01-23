@@ -11,7 +11,7 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--policy", type=str, default='random', help="Name of the policy.")
 parser.add_argument("--device", type=str, default='cuda:0')
 
-args_cli = parser.parse_args()
+args_cli,_ = parser.parse_known_args()
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -24,10 +24,12 @@ import isaaclab_logistics_vla
 from isaaclab_tasks.utils import parse_env_cfg
 
 from isaaclab_logistics_vla.tasks.realman_lift.realman_lift_env_cfg import LiftEnvCfg
+from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.env_cfg import DualArmPickAndPlaceEnvCfg 
+from isaaclab_logistics_vla.tasks.test_tasks.order_series.env_cfg import OrderEnvCfg
 from isaaclab_logistics_vla.evaluation.evaluator.vla_evaluator import VLA_Evaluator
 
 def main():
-    env_cfg = LiftEnvCfg()
+    env_cfg = OrderEnvCfg()
     #env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device else "cuda:0"
 
