@@ -17,6 +17,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 
+#这个地方LJY加了一行注释
 @configclass
 class TargetObjectSpec:
     """Definition of a single spawnable target物体."""
