@@ -42,17 +42,18 @@ parser = argparse.ArgumentParser(
   - Isaac-Logistics-SingleArmSorting-Franka-v0: Franka机器人单臂分拣任务
     """
 )
+
 parser.add_argument(
     "--disable_fabric",
     action="store_true",
     default=False,
-    help="禁用fabric并使用USD I/O操作。",
+    help="禁用fabric并使用USD I/O操作的命令。",
 )
 parser.add_argument(
     "--num_envs",
     type=int,
     default=None,
-    help="要模拟的环境数量。",
+    help="要模拟的环境数",
 )
 parser.add_argument(
     "--task",
