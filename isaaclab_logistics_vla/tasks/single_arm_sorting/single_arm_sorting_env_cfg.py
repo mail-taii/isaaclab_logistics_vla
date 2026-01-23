@@ -69,7 +69,7 @@ class SingleArmSortingSceneCfg(InteractiveSceneCfg):
         ),
         spawn=UsdFileCfg(
             usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
-            scale=(1.5, 1.5, 1.0),  # ← 同样放大
+            scale=(1.5, 1.5, 1.0),  #放大（这个地方LJY修改了一行注释）
         ),
     )
 
@@ -155,8 +155,8 @@ class RewardsCfg:
     # Task completion
     task_completion = RewTerm(func=mdp.task_is_completed, weight=50.0)
 
-    # Action smoothness
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
+    #在上方LJY删除了一行注释
 
 
 @configclass

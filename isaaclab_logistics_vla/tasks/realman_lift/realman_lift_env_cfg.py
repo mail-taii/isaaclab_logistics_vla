@@ -38,6 +38,7 @@ REALMAN_USD_PATH = os.path.join(
     "realman_no_wheel.usd"
 )
 
+#这个地方LJY添加了一行注释来学习PR
 RM_CONFIG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=REALMAN_USD_PATH,
