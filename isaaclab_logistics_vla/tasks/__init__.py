@@ -6,5 +6,3 @@
 """Package containing logistics VLA task implementations."""
 
 # Import all task sub-packages to ensure Gym environment registration
-from . import realman_lift  # noqa: F401
-from . import single_arm_sorting  # noqa: F401

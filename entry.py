@@ -39,8 +39,21 @@ from isaaclab_tasks.utils import parse_env_cfg
 # PLACEHOLDER: Extension template (do not remove this comment)
 
 
+
+
 def main():
-    """Random actions agent with Isaac Lab environment."""
+    gym.register(
+        id="Isaac-Realman-lift",
+        
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        
+        disable_env_checker=True,
+        
+        kwargs={
+            "env_cfg_entry_point": f"isaaclab_logistics_vla.tasks.realman_lift.realman_lift_env_cfg:LiftEnvCfg",
+            # "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:RealmanPPORunnerCfg",
+        },
+    )
     # create environment configuration
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
