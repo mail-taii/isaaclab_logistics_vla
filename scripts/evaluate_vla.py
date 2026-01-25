@@ -23,7 +23,6 @@ import isaaclab_tasks
 import isaaclab_logistics_vla
 from isaaclab_tasks.utils import parse_env_cfg
 
-from isaaclab_logistics_vla.tasks.realman_lift.realman_lift_env_cfg import LiftEnvCfg
 from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.env_cfg import DualArmPickAndPlaceEnvCfg 
 from isaaclab_logistics_vla.tasks.test_tasks.order_series.env_cfg import OrderEnvCfg
 from isaaclab_logistics_vla.evaluation.evaluator.vla_evaluator import VLA_Evaluator
