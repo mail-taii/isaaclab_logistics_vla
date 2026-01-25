@@ -31,3 +31,4 @@ from .utils import import_packages
 _BLACKLIST_PKGS = ["utils"]
 import_packages(__name__, _BLACKLIST_PKGS)
 
+import isaaclab_logistics_vla.configs.robot_configs.realman_config

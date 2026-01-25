@@ -1,0 +1,725 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="realman_franka_ee">
+  <joint name="head_joint1" type="revolute">
+    <origin xyz="0. -0.1018 0.126 " rpy="0. 0. 0."/>
+    <parent link="dual_rm_75b_description_platform_base_link"/>
+    <child link="dual_rm_75b_description_head_link1"/>
+    <axis xyz="0. 0. 1."/>
+    <limit lower="-1.256" upper="1.256" effort="2." velocity="1.5699999"/>
+  </joint>
+  <joint name="head_joint2" type="revolute">
+    <origin xyz="0. -0.02 0.044" rpy="0. 0. 3.1415927"/>
+    <parent link="dual_rm_75b_description_head_link1"/>
+    <child link="dual_rm_75b_description_head_link2"/>
+    <axis xyz="1. 0. 0."/>
+    <limit lower="-0.419" upper="0.419" effort="2." velocity="1.5699999"/>
+  </joint>
+  <joint name="l_joint1" type="revolute">
+    <origin xyz="0.2322292 -0.110299 0.1638738" rpy="1.5707926 -0.7853999 -3.1415854"/>
+    <parent link="dual_rm_75b_description_platform_base_link"/>
+    <child link="dual_rm_75b_description_l_link1"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-3.1099998" upper="3.1099998" effort="60." velocity="3.1399998"/>
+  </joint>
+  <joint name="l_joint2" type="revolute">
+    <origin xyz="0. 0. 0." rpy="-1.5707927 -0. 0. "/>
+    <parent link="dual_rm_75b_description_l_link1"/>
+    <child link="dual_rm_75b_description_l_link2"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-2.2699999" upper="2.2699999" effort="60." velocity="3.1399998"/>
+  </joint>
+  <joint name="l_joint3" type="revolute">
+    <origin xyz="0. -0. 0.256" rpy="-1.5708 0. 0. "/>
+    <parent link="dual_rm_75b_description_l_link2"/>
+    <child link="dual_rm_75b_description_l_link3"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-3.1099998" upper="3.1099998" effort="30." velocity="3.9249998"/>
+  </joint>
+  <joint name="l_joint4" type="revolute">
+    <origin xyz="0. -0.0000001 0. " rpy="1.5708 0. -0. "/>
+    <parent link="dual_rm_75b_description_l_link3"/>
+    <child link="dual_rm_75b_description_l_link4"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-2.3599999" upper="2.3599999" effort="30." velocity="3.9249998"/>
+  </joint>
+  <joint name="l_joint5" type="revolute">
+    <origin xyz="0. -0.0003 0.21 " rpy="-1.5708 0.0000001 0. "/>
+    <parent link="dual_rm_75b_description_l_link4"/>
+    <child link="dual_rm_75b_description_l_link5"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-3.1099998" upper="3.1099998" effort="200." velocity="3.9249998"/>
+  </joint>
+  <joint name="l_joint6" type="revolute">
+    <origin xyz="0.0000001 -0.0000001 0. " rpy="-1.5707928 0.0000001 -0.0000001"/>
+    <parent link="dual_rm_75b_description_l_link5"/>
+    <child link="dual_rm_75b_description_l_link6"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-2.2299999" upper="2.2299999" effort="200." velocity="3.9249998"/>
+  </joint>
+  <joint name="l_joint7" type="revolute">
+    <origin xyz="0. 0.0002997 -0.115 " rpy="0. -0.0000001 0.0015925"/>
+    <parent link="dual_rm_75b_description_l_link6"/>
+    <child link="l_link7"/>
+    <axis xyz="0. 0. 1."/>
+    <limit lower="-6.2799996" upper="6.2799996" effort="200." velocity="3.9249998"/>
+  </joint>
+  <joint name="left_hand_joint" type="fixed">
+    <origin xyz="0. 0. -0." rpy="-3.1400044 0.0000044 3.139341 "/>
+    <parent link="l_link7"/>
+    <child link="panda_left_hand"/>
+  </joint>
+  <joint name="left_left_joint" type="prismatic">
+    <origin xyz="-0.0011076 0.0000964 0.0604212" rpy="-0.0015832 0.0000017 -0.000664 "/>
+    <parent link="panda_left_hand"/>
+    <child link="panda_left_leftfinger"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="0." upper="0.04" effort="10." velocity="0."/>
+  </joint>
+  <joint name="left_right_joint" type="prismatic">
+    <origin xyz="-0.0011076 0.0000964 0.0604212" rpy="0.0015832 -0.0000017 3.1409285"/>
+    <parent link="panda_left_hand"/>
+    <child link="panda_left_rightfinger"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="0." upper="0.04" effort="10." velocity="0."/>
+  </joint>
+  <joint name="platform_joint" type="prismatic">
+    <origin xyz="0. -0.11663 0.271 " rpy="0. 0. 0."/>
+    <parent link="dual_rm_75b_description"/>
+    <child link="dual_rm_75b_description_platform_base_link"/>
+    <axis xyz="0. 0. 1."/>
+    <limit lower="0." upper="1." effort="60." velocity="0.15"/>
+  </joint>
+  <joint name="r_joint1" type="revolute">
+    <origin xyz="-0.2322292 -0.1103 0.1638737" rpy="1.5707 0.7853999 3.1414616"/>
+    <parent link="dual_rm_75b_description_platform_base_link"/>
+    <child link="dual_rm_75b_description_r_link1"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-3.1099998" upper="3.1099998" effort="60." velocity="3.1399998"/>
+  </joint>
+  <joint name="r_joint2" type="revolute">
+    <origin xyz="0. 0. 0." rpy="-1.5707927 0. -0. "/>
+    <parent link="dual_rm_75b_description_r_link1"/>
+    <child link="dual_rm_75b_description_r_link2"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-2.2699999" upper="2.2699999" effort="60." velocity="3.1399998"/>
+  </joint>
+  <joint name="r_joint3" type="revolute">
+    <origin xyz="0. -0. 0.256" rpy="-1.5708 0. 0. "/>
+    <parent link="dual_rm_75b_description_r_link2"/>
+    <child link="dual_rm_75b_description_r_link3"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-3.1099998" upper="3.1099998" effort="30." velocity="3.9249998"/>
+  </joint>
+  <joint name="r_joint4" type="revolute">
+    <origin xyz="-0. -0.0000001 -0. " rpy="-1.5707928 -0. 0. "/>
+    <parent link="dual_rm_75b_description_r_link3"/>
+    <child link="dual_rm_75b_description_r_link4"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-2.3599999" upper="2.3599999" effort="30." velocity="3.9249998"/>
+  </joint>
+  <joint name="r_joint5" type="revolute">
+    <origin xyz="-0. 0.0003001 -0.21 " rpy="1.5707928 0.0000001 0. "/>
+    <parent link="dual_rm_75b_description_r_link4"/>
+    <child link="dual_rm_75b_description_r_link5"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-3.1099998" upper="3.1099998" effort="10." velocity="3.9249998"/>
+  </joint>
+  <joint name="r_joint6" type="revolute">
+    <origin xyz="-0.0000001 -0.0000001 0. " rpy="-1.5706927 -0.0000001 0.0000001"/>
+    <parent link="dual_rm_75b_description_r_link5"/>
+    <child link="dual_rm_75b_description_r_link6"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="-2.2299999" upper="2.2299999" effort="10." velocity="3.9249998"/>
+  </joint>
+  <joint name="r_joint7" type="revolute">
+    <origin xyz="-0. 0.0002818 -0.117 " rpy="0.000153 -0.0000001 -3.1415925"/>
+    <parent link="dual_rm_75b_description_r_link6"/>
+    <child link="r_link7"/>
+    <axis xyz="0. 0. 1."/>
+    <limit lower="-6.2799996" upper="6.2799996" effort="10." velocity="3.9249998"/>
+  </joint>
+  <joint name="right_hand_joint" type="fixed">
+    <origin xyz="-0.0000006 -0.0000099 0.0019992" rpy="3.141453 -0. -0.0001396"/>
+    <parent link="r_link7"/>
+    <child link="panda_right_hand"/>
+  </joint>
+  <joint name="right_left_joint" type="prismatic">
+    <origin xyz="0.0011054 -0.0000053 0.0604239" rpy="0.0000867 0.0000017 -0.0000469"/>
+    <parent link="panda_right_hand"/>
+    <child link="panda_right_leftfinger"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="0." upper="0.04" effort="10." velocity="0."/>
+  </joint>
+  <joint name="right_right_joint" type="prismatic">
+    <origin xyz="0.0011054 -0.0000053 0.0604239" rpy="-0.0000867 -0.0000017 3.1415458"/>
+    <parent link="panda_right_hand"/>
+    <child link="panda_right_rightfinger"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="0." upper="0.04" effort="10." velocity="0."/>
+  </joint>
+  <link name="dual_rm_75b_description">
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_base_link_underpan_visuals_base_link_underpan_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_base_link_underpan_visuals_body_base_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_base_link_underpan_collisions_base_link_underpan_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_base_link_underpan_collisions_body_base_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_base_link_underpan_collisions_base_link_underpan_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_base_link_underpan_collisions_body_base_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_head_link1">
+    <inertial>
+      <origin xyz="-0.0001756 -0.015989 0.024926 " rpy="0. 0. 0."/>
+      <mass value="0.049513"/>
+      <inertia ixx="0.0000163" ixy="-0." ixz="0.0000001" iyy="0.0000222" iyz="-0.0000005" izz="0.0000136"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. -0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link1_visuals_head_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. -0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link1_collisions_head_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. -0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link1_collisions_head_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_head_link2">
+    <inertial>
+      <origin xyz="-0.0006996 -0.0336221 0.0562338" rpy="0. 0. 0."/>
+      <mass value="0.286168"/>
+      <inertia ixx="0.0003203" ixy="-0.0000012" ixz="0.0000004" iyy="0.000594" iyz="0.000028" izz="0.0006142"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. -0. 0." rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link2_visuals_head_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0032391 0.051866 0.061606 " rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link2_visuals_camera_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. -0. 0." rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link2_collisions_head_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0032391 0.051866 0.061606 " rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link2_collisions_camera_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. -0. 0." rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link2_collisions_head_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.0032391 0.051866 0.061606 " rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_head_link2_collisions_camera_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_l_link1">
+    <inertial>
+      <origin xyz="0.0000003 0.025188 -0.021107 " rpy="0. 0. 0."/>
+      <mass value="0.59353"/>
+      <inertia ixx="0.0012661" ixy="-0." ixz="-0." iyy="0.0005613" iyz="-0.0002112" izz="0.0011816"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="3.1415927 -0. 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link1_visuals_l_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="3.1415927 -0. 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link1_collisions_l_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="3.1415927 -0. 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link1_collisions_l_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_l_link2">
+    <inertial>
+      <origin xyz="0.0000004 0.011077 0.07613 " rpy="0. 0. 0."/>
+      <mass value="0.43285"/>
+      <inertia ixx="0.0012584" ixy="0." ixz="0." iyy="0.0012224" iyz="0.000279" izz="0.0003175"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link2_visuals_l_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link2_collisions_l_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link2_collisions_l_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_l_link3">
+    <inertial>
+      <origin xyz="0.0000001 0.027347 -0.023544 " rpy="0. 0. 0."/>
+      <mass value="0.43132"/>
+      <inertia ixx="0.0007943" ixy="0." ixz="0." iyy="0.0003151" iyz="-0.0001426" izz="0.0007304"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. -0.0000001 0. " rpy="-0. 0. -0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link3_visuals_l_link3_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. -0.0000001 0. " rpy="-0. 0. -0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link3_collisions_l_link3_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. -0.0000001 0. " rpy="-0. 0. -0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link3_collisions_l_link3_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_l_link4">
+    <inertial>
+      <origin xyz="0.0000047 0.010268 0.059592 " rpy="0. 0. 0."/>
+      <mass value="0.28963"/>
+      <inertia ixx="0.0006374" ixy="-0." ixz="0.0000001" iyy="0.0006142" iyz="0.0001446" izz="0.0001565"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0.0000001 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link4_visuals_l_link4_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0.0000001 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link4_collisions_l_link4_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0.0000001 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link4_collisions_l_link4_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_l_link5">
+    <inertial>
+      <origin xyz="0.0000003 0.02154 -0.018042 " rpy="0. 0. 0."/>
+      <mass value="0.23942"/>
+      <inertia ixx="0.0002859" ixy="-0." ixz="-0." iyy="0.0001199" iyz="-0.0000442" izz="0.0002627"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.0000001 -0.0000001 0. " rpy="-0. 0.0000001 -0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link5_visuals_l_link5_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.0000001 -0.0000001 0. " rpy="-0. 0.0000001 -0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link5_collisions_l_link5_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.0000001 -0.0000001 0. " rpy="-0. 0.0000001 -0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link5_collisions_l_link5_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_l_link6">
+    <inertial>
+      <origin xyz="0.0000042 0.007067 0.059381 " rpy="0. 0. 0."/>
+      <mass value="0.21879"/>
+      <inertia ixx="0.0003505" ixy="-0." ixz="0." iyy="0.0003345" iyz="0.0000782" izz="0.0001049"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="-3.1415925 -0.0000001 -0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link6_visuals_l_link6_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="-3.1415925 -0.0000001 -0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link6_collisions_l_link6_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="-3.1415925 -0.0000001 -0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_l_link6_collisions_l_link6_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_platform_base_link">
+    <inertial>
+      <origin xyz="-0.0000543 -0.0601149 0.0074304" rpy="0. 0. 0."/>
+      <mass value="3.3680201"/>
+      <inertia ixx="0.0159869" ixy="0.0000023" ixz="0.0000091" iyy="0.0402638" iyz="0.0010713" izz="0.0297282"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_visuals_platform_base_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.1 -0.1103 0.031645" rpy="0. -0.7853999 -3.1415854"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_visuals_l_base_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.1 -0.1103 0.031645" rpy="0. -0.7853999 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_visuals_r_base_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_collisions_platform_base_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0.1 -0.1103 0.031645" rpy="0. -0.7853999 -3.1415854"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_collisions_l_base_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.1 -0.1103 0.031645" rpy="0. -0.7853999 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_collisions_r_base_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_collisions_platform_base_link_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.1 -0.1103 0.031645" rpy="0. -0.7853999 -3.1415854"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_collisions_l_base_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.1 -0.1103 0.031645" rpy="0. -0.7853999 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_platform_base_link_collisions_r_base_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_r_link1">
+    <inertial>
+      <origin xyz="0.0000003 0.025188 -0.021107 " rpy="0. 0. 0."/>
+      <mass value="0.59353"/>
+      <inertia ixx="0.0012661" ixy="-0." ixz="-0." iyy="0.0005613" iyz="-0.0002112" izz="0.0011816"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="3.1415927 0. -0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link1_visuals_r_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="3.1415927 0. -0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link1_collisions_r_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="3.1415927 0. -0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link1_collisions_r_link1_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_r_link2">
+    <inertial>
+      <origin xyz="0.0000004 0.011077 0.07613 " rpy="0. 0. 0."/>
+      <mass value="0.43285"/>
+      <inertia ixx="0.0012584" ixy="0." ixz="0." iyy="0.0012224" iyz="0.000279" izz="0.0003175"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link2_visuals_r_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link2_collisions_r_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link2_collisions_r_link2_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_r_link3">
+    <inertial>
+      <origin xyz="0.0000001 0.027347 -0.023544 " rpy="0. 0. 0."/>
+      <mass value="0.43132"/>
+      <inertia ixx="0.0007943" ixy="0." ixz="0." iyy="0.0003151" iyz="-0.0001426" izz="0.0007304"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0. -0.0000001 -0. " rpy="-0. -0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link3_visuals_r_link3_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0. -0.0000001 -0. " rpy="-0. -0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link3_collisions_r_link3_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0. -0.0000001 -0. " rpy="-0. -0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link3_collisions_r_link3_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_r_link4">
+    <inertial>
+      <origin xyz="0.0000047 0.010268 0.059592 " rpy="0. 0. 0."/>
+      <mass value="0.28963"/>
+      <inertia ixx="0.0006374" ixy="-0." ixz="0.0000001" iyy="0.0006142" iyz="0.0001446" izz="0.0001565"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="-3.1415925 0.0000001 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link4_visuals_r_link4_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="-3.1415925 0.0000001 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link4_collisions_r_link4_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="-3.1415925 0.0000001 0. "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link4_collisions_r_link4_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_r_link5">
+    <inertial>
+      <origin xyz="0.0000003 0.02154 -0.018042 " rpy="0. 0. 0."/>
+      <mass value="0.23942"/>
+      <inertia ixx="0.0002859" ixy="-0." ixz="-0." iyy="0.0001199" iyz="-0.0000442" izz="0.0002627"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.0000001 -0.0000001 0. " rpy="-0. -0.0000001 0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link5_visuals_r_link5_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.0000001 -0.0000001 0. " rpy="-0. -0.0000001 0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link5_collisions_r_link5_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.0000001 -0.0000001 0. " rpy="-0. -0.0000001 0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link5_collisions_r_link5_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dual_rm_75b_description_r_link6">
+    <inertial>
+      <origin xyz="0.0000042 0.0070761 0.05938 " rpy="0. 0. 0."/>
+      <mass value="0.21879"/>
+      <inertia ixx="0.0003505" ixy="-0." ixz="0." iyy="0.0003345" iyz="0.0000782" izz="0.0001049"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="-3.1415927 0.0000001 0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link6_visuals_r_link6_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="-3.1415927 0.0000001 0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link6_collisions_r_link6_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="-3.1415927 0.0000001 0.0000001"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/dual_rm_75b_description_r_link6_collisions_r_link6_mesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_link7">
+    <inertial>
+      <origin xyz="-0.0139164 0.0034096 0.0734579" rpy="0. 0. 0."/>
+      <mass value="0.41281"/>
+      <inertia ixx="0.0017432" ixy="-0.0000659" ixz="-0.000321" iyy="0.0020032" iyz="-0.0000761" izz="0.0006545"/>
+    </inertial>
+  </link>
+  <link name="panda_left_hand">
+    <visual>
+      <origin xyz="0. 0. 0." rpy="-0.0015832 0.0000017 -0.000664 "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_left_hand_geometry_panda_hand.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="-0.0015832 0.0000017 -0.000664 "/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_left_hand_geometry_panda_hand.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="panda_left_leftfinger">
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_left_leftfinger_geometry_panda_leftfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_left_leftfinger_geometry_panda_leftfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="panda_left_rightfinger">
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_left_rightfinger_geometry_panda_rightfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_left_rightfinger_geometry_panda_rightfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="panda_right_hand">
+    <visual>
+      <origin xyz="0. 0. -0." rpy="0.0000867 0.0000017 -0.0000469"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_right_hand_geometry_panda_hand.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. -0." rpy="0.0000867 0.0000017 -0.0000469"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_right_hand_geometry_panda_hand.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="panda_right_leftfinger">
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_right_leftfinger_geometry_panda_leftfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_right_leftfinger_geometry_panda_leftfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="panda_right_rightfinger">
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_right_rightfinger_geometry_panda_rightfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 3.1415927"/>
+      <geometry>
+        <mesh filename="file:///home/wst/model_files/realman/meshes/panda_right_rightfinger_geometry_panda_rightfinger.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="r_link7">
+    <inertial>
+      <origin xyz="-0.0190168 0.0009399 0.0723877" rpy="0. 0. 0."/>
+      <mass value="0.41284"/>
+      <inertia ixx="0.0017579" ixy="-0.0000266" ixz="-0.0002185" iyy="0.0020102" iyz="-0.0000246" izz="0.0005894"/>
+    </inertial>
+  </link>
+</robot>

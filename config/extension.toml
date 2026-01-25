@@ -21,4 +21,3 @@ reloadable = false
 
 [[python.module]]
 name = "isaaclab_logistics_vla"
-
