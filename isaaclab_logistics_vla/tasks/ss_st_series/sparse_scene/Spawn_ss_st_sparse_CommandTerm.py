@@ -9,7 +9,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
+from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -75,15 +75,25 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
         
         num_envs = len(env_ids)
 
+        # for obj_idx, obj_asset in enumerate(self.object_assets):
+        #     far_position = torch.zeros((num_envs, 3), device=self.device)
+        #     far_position[:,0] = 100
+        #     far_position[:,1] = 100
+
+        #     quat = torch.zeros((num_envs, 4), device=self.device)
+        #     quat[:,0] = 1
+
+        #     set_asset_position(self.env,env_ids,obj_asset,far_position,quat)
+
         def get_params_and_dims(obj_name):
             if "cracker" in obj_name: p = CRACKER_BOX_PARAMS
             elif "sugar" in obj_name: p = SUGER_BOX_PARAMS
             elif "soup" in obj_name:  p = TOMATO_SOUP_CAN_PARAMS
             else: p = CRACKER_BOX_PARAMS 
             if 'RADIUS' in p:
-                return p['RADIUS']*2, p['RADIUS']*2, p['Z_LENGTH'], p['STANDARD_ORI']
+                return p['RADIUS']*2, p['RADIUS']*2, p['Z_LENGTH'], p['SPARSE_ORIENT']
             else:
-                return p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH'], p['STANDARD_ORI']
+                return p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH'], p['SPARSE_ORIENT']
             
         box_x = WORK_BOX_PARAMS['X_LENGTH']
         box_y = WORK_BOX_PARAMS['Y_LENGTH']
@@ -92,8 +102,8 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
         cell_y = box_y / 2.0
 
         anchors = torch.tensor([
-            [-box_x/3, -box_y/4], [0,-box_y/4 ], [box_x/3,box_y/4],
-            [ -box_x/3, box_y/4], [ 0, box_y/4], [ box_x/3, -box_y/4]
+            [-box_x/3, -box_y/4], [0,-box_y/4 ], [box_x/3,  -box_y/4],
+            [ -box_x/3, box_y/4], [ 0, box_y/4], [ box_x/3, box_y/4]
         ], device=self.device)
 
         # slot_perms:shape(num_envs, 6), e.g. [[3,0,5,1,2,4]]
@@ -150,4 +160,10 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
                 )
 
     def _update_spawn_metrics(self):
+        pass
+
+    def _update_command(self):
+        pass
+
+    def command(self):
         pass

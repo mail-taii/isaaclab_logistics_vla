@@ -111,3 +111,45 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
         
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.51025, 1.33614, 0.755),rot=(1, 0, 0, 0)),
     )
+
+    t_box_1 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/t_box_1",
+        spawn=UsdFileCfg(
+            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
+            scale=(1, 1, 1),
+            rigid_props=schemas.RigidBodyPropertiesCfg(
+                sleep_threshold=0.05,
+            ),
+        ),
+        
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.57989, 3.4429, 0.66),rot=(1, 0, 0, 0)),
+    )
+
+    t_box_2 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/t_box_2",
+        spawn=UsdFileCfg(
+            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
+            scale=(1, 1, 1),
+            rigid_props=schemas.RigidBodyPropertiesCfg(
+                sleep_threshold=0.05,
+            ),
+        ),
+        
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.025, 3.4429, 0.66),rot=(1, 0, 0, 0)),
+    )
+
+    t_box_3 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/t_box_3",
+        spawn=UsdFileCfg(
+            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
+            scale=(1, 1, 1),
+            rigid_props=schemas.RigidBodyPropertiesCfg(
+                sleep_threshold=0.05,
+            ),
+        ),
+        
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.510, 3.4429, 0.66),rot=(1, 0, 0, 0)),
+    )

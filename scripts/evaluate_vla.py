@@ -25,10 +25,11 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.env_cfg import DualArmPickAndPlaceEnvCfg 
 from isaaclab_logistics_vla.tasks.test_tasks.order_series.env_cfg import OrderEnvCfg # 我要把这里换成我的任务
+from isaaclab_logistics_vla.tasks.ss_st_series.sparse_scene.env_cfg import Spawn_ss_st_sparse_EnvCfg
 from isaaclab_logistics_vla.evaluation.evaluator.vla_evaluator import VLA_Evaluator
 
 def main():
-    env_cfg = OrderEnvCfg()
+    env_cfg = Spawn_ss_st_sparse_EnvCfg()
     #env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device else "cuda:0"
 

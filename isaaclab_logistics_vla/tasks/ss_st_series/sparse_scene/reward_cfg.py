@@ -13,7 +13,7 @@ class Spawn_ss_st_sparse_RewardCfg:
         func=mdp.command_term_metric,
         weight=1.0,  # 正奖励
         params={
-            "command_name": "order_task", # 必须对应你在 CommandsCfg 里的名字
+            "command_name": "order_info", # 必须对应你在 CommandsCfg 里的名字
             "metric_key": "order_completion_rate"
         },
     )
@@ -24,7 +24,7 @@ class Spawn_ss_st_sparse_RewardCfg:
         func=mdp.command_term_metric,
         weight=-0.1, # 负奖励 (系数需要根据数值范围调整)
         params={
-            "command_name": "order_task",
+            "command_name": "order_info",
             "metric_key": "mean_action_time"
         },
     )

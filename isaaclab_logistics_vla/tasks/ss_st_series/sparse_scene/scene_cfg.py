@@ -22,7 +22,11 @@ SKU_DEFINITIONS = {
 
 @configclass
 class Spawn_ss_st_sparse_SceneCfg(BaseOrderSceneCfg):
-    pass
+    robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot.init_state.pos  = (0.96781,2.28535,0.216)
+    robot.init_state.rot = (1,0,0,0)
+
+    ee_frame: FrameTransformerCfg = register.load_eeframe_configs('realman_franka_ee_eeframe')()
 
 for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
     for i in range(count):
@@ -32,14 +36,14 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
         # 定义 Config
         obj_cfg = RigidObjectCfg(
             prim_path=f"{{ENV_REGEX_NS}}/{instance_name}",
-            spawn=RigidObjectCfg.SpawnCfg(
+            spawn=UsdFileCfg(
                 usd_path=usd_path,
                 scale=(1.0, 1.0, 1.0),
                 rigid_props=schemas.RigidBodyPropertiesCfg(
-                sleep_threshold=0.05
+                    sleep_threshold=0.05
                 ),
             ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0.2),rot=(1, 0, 0, 0)),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(11.58019, 1.33614, 0.86797),rot=(1, 0, 0, 0)),
         )
         
         # [关键] 动态注入到 MySceneCfg 类中

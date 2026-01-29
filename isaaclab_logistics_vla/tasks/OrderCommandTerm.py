@@ -78,7 +78,7 @@ class OrderCommandTerm(CommandTerm):
 
         # 记录每个物品的状态：0=待生成, 1=待处理, 2=抓取中, 3=已完成, 4=失败
         self.object_states = torch.zeros(
-            (self.num_envs, self.num_objects), 0, dtype=torch.long, device=self.device
+            (self.num_envs, self.num_objects),  dtype=torch.long, device=self.device
         )
 
         self.order_completion = torch.zeros(

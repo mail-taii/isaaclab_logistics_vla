@@ -7,7 +7,7 @@ from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, G
 from isaaclab.utils import configclass
 
 from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
-from sparse_scene.Spawn_ss_st_sparse_CommandTerm import Spawn_ss_st_sparse_CommandTerm
+from .Spawn_ss_st_sparse_CommandTerm import Spawn_ss_st_sparse_CommandTerm
 
 @configclass
 class Spawn_ss_st_sparse_CommandTermCfg(OrderCommandTermCfg):

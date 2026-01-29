@@ -3,13 +3,13 @@ from isaaclab.utils import configclass
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 
-from sparse_scene.Spawn_ss_st_sparse_CommandTermCfg import Spawn_ss_st_sparse_CommandTermCfg
+from .Spawn_ss_st_sparse_CommandTermCfg import Spawn_ss_st_sparse_CommandTermCfg
 
 ASSET_NAME = "robot"
 BODY_NAME = "base_link_underpan"
 
 @configclass
-class CommandsCfg:
+class Spawn_ss_st_sparse_CommandsCfg:
     """Command terms for the MDP."""
 
     order_info = Spawn_ss_st_sparse_CommandTermCfg(

@@ -16,11 +16,11 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-from sparse_scene.scene_cfg import Spawn_ss_st_sparse_SceneCfg
-from sparse_scene.observation_cfg import ObservationsCfg
-from sparse_scene.command_cfg import 
-from sparse_scene.reward_cfg import Spawn_ss_st_sparse_RewardCfg
-from sparse_scene.event_cfg import Spawn_ss_st_sparse_EventCfg
+from .scene_cfg import Spawn_ss_st_sparse_SceneCfg
+from .observation_cfg import ObservationsCfg
+from .command_cfg import Spawn_ss_st_sparse_CommandsCfg
+from .reward_cfg import Spawn_ss_st_sparse_RewardCfg
+from .event_cfg import Spawn_ss_st_sparse_EventCfg
 
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks import mdp
@@ -38,14 +38,14 @@ class CurriculumCfg:
     pass
 
 @configclass
-class OrderEnvCfg(ManagerBasedRLEnvCfg):
+class Spawn_ss_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment."""
     # Scene settings
     scene: Spawn_ss_st_sparse_SceneCfg = Spawn_ss_st_sparse_SceneCfg(num_envs=4,env_spacing = 5.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
-    commands: CommandsCfg = CommandsCfg()
+    commands: Spawn_ss_st_sparse_CommandsCfg = Spawn_ss_st_sparse_CommandsCfg()
     # MDP settings
     rewards: Spawn_ss_st_sparse_RewardCfg = Spawn_ss_st_sparse_RewardCfg()
     terminations: TerminationsCfg = TerminationsCfg()
