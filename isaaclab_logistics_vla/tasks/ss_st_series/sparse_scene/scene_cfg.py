@@ -1,0 +1,47 @@
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, DeformableObjectCfg, RigidObjectCfg
+from isaaclab.utils import configclass
+import isaaclab.sim as sim_utils
+import isaaclab.sim.schemas as schemas
+from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
+from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+
+from isaaclab_logistics_vla.tasks import mdp
+from isaaclab_logistics_vla.utils.register import register
+from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
+from isaaclab_logistics_vla.utils.constant import *
+
+SKU_DEFINITIONS = {
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],2),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],2),
+    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],2),
+}
+
+
+@configclass
+class Spawn_ss_st_sparse_SceneCfg(BaseOrderSceneCfg):
+    pass
+
+for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
+    for i in range(count):
+        # 实例名: cracker_box_0, cracker_box_1 ...
+        instance_name = f"{sku_name}_{i}"
+        
+        # 定义 Config
+        obj_cfg = RigidObjectCfg(
+            prim_path=f"{{ENV_REGEX_NS}}/{instance_name}",
+            spawn=RigidObjectCfg.SpawnCfg(
+                usd_path=usd_path,
+                scale=(1.0, 1.0, 1.0),
+                rigid_props=schemas.RigidBodyPropertiesCfg(
+                sleep_threshold=0.05
+                ),
+            ),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0.2),rot=(1, 0, 0, 0)),
+        )
+        
+        # [关键] 动态注入到 MySceneCfg 类中
+        # 这样 Isaac Lab 解析时就能看到这些属性
+        setattr(Spawn_ss_st_sparse_SceneCfg, instance_name, obj_cfg)

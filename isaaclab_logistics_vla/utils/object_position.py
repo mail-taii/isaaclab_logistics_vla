@@ -84,3 +84,32 @@ def set_asset_relative_position(
     )
 
     _set_asset_global_pose(env,env_ids,target_asset,pos_A_w,quat_A_w)
+
+
+def check_object_in_box(
+    env_ids: torch.Tensor,
+    target_asset: RigidObject,  
+    box_asset,     
+    box_size
+):
+    pos_obj = target_asset.data.root_pos_w[env_ids]
+
+    pos_box = box_asset.data.root_pos_w[env_ids]
+
+    quat_box = box_asset.data.root_quat_w[env_ids]
+
+    relative_pos_world = pos_obj - pos_box  #计算世界坐标下的相对向量
+    #箱子坐标系下，箱子中心点到物体的向量
+    pos_local = math_utils.quat_apply_inverse(quat_box, relative_pos_world)  
+
+    x_length, y_length, z_length = box_size
+
+    in_x = torch.abs(pos_local[:, 0]) < (x_length / 2)
+
+    in_y = torch.abs(pos_local[:, 1]) < (y_length / 2)
+
+    in_z = (pos_local[:, 2] > 0) & (pos_local[:, 2] < z_length * 1.5) # 稍微允许高一点点
+
+    return in_x & in_y & in_z
+
+    
