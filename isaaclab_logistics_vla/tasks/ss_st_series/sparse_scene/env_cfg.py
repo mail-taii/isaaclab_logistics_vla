@@ -32,6 +32,14 @@ class TerminationsCfg:
     # 保留超时重置：这是必须的，否则环境永远不停
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
+    order_success = DoneTerm(
+        func=mdp.check_order_completion,
+        params={
+            "command_name": "order_info", 
+            "threshold": 0.999, 
+        },
+    )
+
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
@@ -56,7 +64,7 @@ class Spawn_ss_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2
-        self.episode_length_s = 50
+        self.episode_length_s = 10
         # simulation settings
         self.sim.dt = 0.01  # 100Hz
         self.sim.render_interval = self.decimation
