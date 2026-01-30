@@ -112,4 +112,21 @@ def check_object_in_box(
 
     return in_x & in_y & in_z
 
+
+def get_rotated_aabb_size(dim_x, dim_y, dim_z, euler_deg, device='cpu'):
+    """
+    输入: 物体原始尺寸 (x, y, z) 和 欧拉角 (相对于父坐标系的度数)
+    输出：在父级坐标系 X, Y, Z 轴上的投影长度。
+    """
+    dims = torch.tensor([dim_x, dim_y, dim_z], device=device, dtype=torch.float32)
+    angles = torch.tensor(euler_deg, device=device, dtype=torch.float32)
+
+    q:torch.Tensor = math_utils.quat_from_euler_xyz(torch.deg2rad(angles[0]), torch.deg2rad(angles[1]), torch.deg2rad(angles[2]))
+
+    basis_vectors = torch.diag(dims)   # shape: (3, 3) -> 每一行代表一个轴向量: [x,0,0], [0,y,0], [0,0,z]
+
+    rot_vectors = math_utils.quat_apply(q.repeat(3, 1), basis_vectors)
+
+    new_dims = torch.abs(rot_vectors).sum(dim=0)
     
+    return new_dims[0].item(), new_dims[1].item(), new_dims[2].item()

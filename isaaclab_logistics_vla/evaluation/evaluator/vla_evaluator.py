@@ -2,6 +2,9 @@ from .VLAIsaacEnv import VLAIsaacEnv
 import os
 import torch
 import numpy as np
+import time
+
+
 class VLA_Evaluator:
     def __init__(self,env_cfg,policy = 'random'):
         self.env = VLAIsaacEnv(cfg=env_cfg)
@@ -92,6 +95,7 @@ class VLA_Evaluator:
             with torch.inference_mode():
                 actions = self.generate_action(None)
                 obs, rew, terminated, truncated, info = self.env.step(actions)
+                time.sleep(1)
                 if i%100==0 or i<10:
                     isaac_env = self.env.unwrapped
 

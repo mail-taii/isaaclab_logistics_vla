@@ -75,25 +75,32 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
         
         num_envs = len(env_ids)
 
-        # for obj_idx, obj_asset in enumerate(self.object_assets):
-        #     far_position = torch.zeros((num_envs, 3), device=self.device)
-        #     far_position[:,0] = 100
-        #     far_position[:,1] = 100
+        for obj_idx, obj_asset in enumerate(self.object_assets):
+            far_position = torch.zeros((num_envs, 3), device=self.device)
+            far_position[:,0] = 100
+            far_position[:,1] = 100
 
-        #     quat = torch.zeros((num_envs, 4), device=self.device)
-        #     quat[:,0] = 1
+            quat = torch.zeros((num_envs, 4), device=self.device)
+            quat[:,0] = 1
 
-        #     set_asset_position(self.env,env_ids,obj_asset,far_position,quat)
+            set_asset_position(self.env,env_ids,obj_asset,far_position,quat)
 
         def get_params_and_dims(obj_name):
             if "cracker" in obj_name: p = CRACKER_BOX_PARAMS
             elif "sugar" in obj_name: p = SUGER_BOX_PARAMS
             elif "soup" in obj_name:  p = TOMATO_SOUP_CAN_PARAMS
             else: p = CRACKER_BOX_PARAMS 
-            if 'RADIUS' in p:
-                return p['RADIUS']*2, p['RADIUS']*2, p['Z_LENGTH'], p['SPARSE_ORIENT']
-            else:
-                return p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH'], p['SPARSE_ORIENT']
+
+            raw_x, raw_y, raw_z = p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH']
+
+            ori_deg = p.get('SPARSE_ORIENT', (0, 0, 0))
+            real_x, real_y, real_z = get_rotated_aabb_size(
+                raw_x, raw_y, raw_z, 
+                ori_deg, 
+                device=self.device
+            )
+            print(obj_name,real_x, real_y, real_z, ori_deg)
+            return real_x, real_y, real_z, ori_deg
             
         box_x = WORK_BOX_PARAMS['X_LENGTH']
         box_y = WORK_BOX_PARAMS['Y_LENGTH']

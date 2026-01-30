@@ -43,7 +43,7 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
                     sleep_threshold=0.05
                 ),
             ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(11.58019, 1.33614, 0.86797),rot=(1, 0, 0, 0)),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(1158019, 133614, 0),rot=(1, 0, 0, 0)),
         )
         
         # [关键] 动态注入到 MySceneCfg 类中
