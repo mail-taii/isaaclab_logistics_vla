@@ -42,7 +42,7 @@ class CurriculumCfg:
 class OrderEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment."""
     # Scene settings
-    scene: OrderSceneCfg = OrderSceneCfg(num_envs=4,env_spacing = 5.0)
+    scene: OrderSceneCfg = OrderSceneCfg(num_envs=4, env_spacing = 5.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
