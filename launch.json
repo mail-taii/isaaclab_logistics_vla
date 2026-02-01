@@ -13,8 +13,8 @@
             "env": {
                 "RESOURCE_NAME": "IsaacSim"
             },
-            "python": "/home/wst/anaconda3/envs/env_isaaclab/bin/python3.10/",
-            "envFile": "/home/wst/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/.vscode/.standalone_examples.env",
+            "python": "/home/junzhe/anaconda3/envs/env_isaaclab/bin/python3.10/",
+            "envFile": "/home/junzhe/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/.vscode/.standalone_examples.env",
             "preLaunchTask": "setup_python_env"
         },
         {
@@ -28,12 +28,12 @@
             "name": "(Linux) isaac-sim",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/home/wst/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/kit/kit",
-            "args": ["/home/wst/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/apps/isaacsim.exp.full.kit",
-                "--ext-folder", "/home/wst/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/exts",
-                "--ext-folder", "/home/wst/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/apps"],
+            "program": "/home/junzhe/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/kit/kit",
+            "args": ["/home/junzhe/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/apps/isaacsim.exp.full.kit",
+                "--ext-folder", "/home/junzhe/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/exts",
+                "--ext-folder", "/home/junzhe/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/apps"],
             "stopAtEntry": false,
-            "cwd": "/home/wst/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim",
+            "cwd": "/home/junzhe/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
