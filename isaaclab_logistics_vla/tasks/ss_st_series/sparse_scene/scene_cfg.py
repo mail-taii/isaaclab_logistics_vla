@@ -26,6 +26,8 @@ class Spawn_ss_st_sparse_SceneCfg(BaseOrderSceneCfg):
     robot.init_state.pos  = (0.96781,2.28535,0.216)
     robot.init_state.rot = (1,0,0,0)
 
+    replicate_physics=False
+
     ee_frame: FrameTransformerCfg = register.load_eeframe_configs('realman_franka_ee_eeframe')()
 
 for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
