@@ -22,9 +22,10 @@ from isaaclab_logistics_vla.tasks.test_tasks.order_series.command_cfg import Com
 from isaaclab_logistics_vla.tasks.test_tasks.order_series.observation_cfg import ObservationsCfg
 from isaaclab_logistics_vla.tasks.test_tasks.order_series.event_cfg import EventCfg
 from isaaclab_logistics_vla.tasks.test_tasks.order_series.reward_cfg import RewardsCfg
-from isaaclab_logistics_vla.tasks.test_tasks.order_series.scene_cfg import OrderSceneCfg
+from isaaclab_logistics_vla.tasks.test_tasks.order_series.scene_cfg import OrderSceneCfg, get_order_scene_cfg
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks import mdp
+
 
 @configclass
 class TerminationsCfg:
@@ -40,12 +41,13 @@ class CurriculumCfg:
 
 @configclass
 class OrderEnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the lifting environment."""
-    # Scene settings
-    scene: OrderSceneCfg = OrderSceneCfg(num_envs=4,env_spacing = 5.0)
+    """Configuration for the lifting environment. robot_id 决定场景中的机器人与相机绑定。"""
+    robot_id: str = "realman_dual_left_arm"
+    # Scene settings：按 robot_id 选择机器人 asset 与相机配置
+    scene: OrderSceneCfg = OrderSceneCfg(num_envs=1, env_spacing=5.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
-    actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
+    actions = register.load_action_configs("realman_franka_ee_actionscfg")()
     commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
@@ -54,7 +56,12 @@ class OrderEnvCfg(ManagerBasedRLEnvCfg):
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        """Post initialization."""
+        """Post initialization. 按 robot_id 切换场景（机器人 + 相机绑定）。"""
+        self.scene = get_order_scene_cfg(
+            self.robot_id,
+            num_envs=self.scene.num_envs,
+            env_spacing=self.scene.env_spacing,
+        )
         # general settings
         self.decimation = 2
         self.episode_length_s = 50

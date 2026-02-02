@@ -22,3 +22,9 @@ class EventCfg:
             "velocity_range": (0.0, 0.0),
         },
     )
+
+    # 重置平台关节到固定高度，防止它下降
+    # reset_platform_height = EventTerm(
+    #     func=mdp.reset_platform_height,
+    #     mode="reset"
+    # )

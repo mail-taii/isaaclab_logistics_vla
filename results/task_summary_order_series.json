@@ -1,0 +1,26 @@
+{
+  "task_name": "order_series",
+  "success_rate": 0.0,
+  "avg_episode_length": 0.0,
+  "metrics_agg": {
+    "total_reward": 0.0
+  },
+  "failures": [
+    {
+      "episode_id": 0,
+      "metrics": {
+        "total_reward": 0.0
+      },
+      "timing": {
+        "episode_time": 2.318260908126831,
+        "steps_per_second": 0.0
+      }
+    }
+  ],
+  "timing": {
+    "episode_time": 2.318260908126831,
+    "steps_per_second": 0.0
+  },
+  "total_episodes": 1,
+  "timestamp": 1770020445.8373811
+}

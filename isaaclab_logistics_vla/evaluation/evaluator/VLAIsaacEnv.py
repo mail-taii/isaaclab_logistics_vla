@@ -1,5 +1,4 @@
 from isaaclab.envs import ManagerBasedRLEnv
-import torch
 
 class VLAIsaacEnv(ManagerBasedRLEnv):
     def __init__(self, cfg, render_mode = None, **kwargs):

@@ -174,7 +174,7 @@ class OrderCommand(CommandTerm):
 
                 # --- A. 确定姿态 ---
                 # 直接读取预设的四元数
-                relative_quat = euler_to_quat_isaac(item_ori[0],item_ori[1],item_ori[2]).repeat(num_active, 1)
+                relative_quat = euler_to_quat_isaac(item_ori[0],item_ori[1],item_ori[2], return_tensor=True).repeat(num_active, 1)
 
                 # --- B. 确定位置 (Grid + Jitter) ---
                 # 取出分配给当前物品的槽位锚点

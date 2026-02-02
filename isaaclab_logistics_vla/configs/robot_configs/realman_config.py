@@ -1,5 +1,3 @@
-import pybullet as p
-import numpy as np
 import os
 
 import isaaclab.sim as sim_utils
@@ -41,7 +39,8 @@ class RealmanFrankaEE(ArticulationCfg):
                     "left_left_joint":0.04,
                     "left_right_joint":0.04,
                     "right_right_joint":0.04,
-                    "right_left_joint":0.04}, 
+                    "right_left_joint":0.04, 
+                    "platform_joint": 0.8},  # 添加平台关节的初始位置
             pos=(-0.71, 0, 0.216),
             rot= euler2quat('z',-90)    #正对x轴正方向
         )
@@ -74,8 +73,8 @@ class RealmanFrankaEE(ArticulationCfg):
         'platform_joint': ImplicitActuatorCfg(
             joint_names_expr=["platform_joint"], 
             effort_limit_sim=1000,
-            stiffness=5000,
-            damping=100,
+            stiffness=10000,  # 增加刚度
+            damping=500,       # 增加阻尼
         ),
     }
 
@@ -136,5 +135,5 @@ class RealmanFrankaEE_ActionsCfg:
         asset_name="robot",
         joint_names=["platform_joint"], 
         scale=1.0,
-        use_default_offset=False,
+        use_default_offset=True,
     )
