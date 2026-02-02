@@ -84,3 +84,49 @@ def set_asset_relative_position(
     )
 
     _set_asset_global_pose(env,env_ids,target_asset,pos_A_w,quat_A_w)
+
+
+def check_object_in_box(
+    env_ids: torch.Tensor,
+    target_asset: RigidObject,  
+    box_asset,     
+    box_size
+):
+    pos_obj = target_asset.data.root_pos_w[env_ids]
+
+    pos_box = box_asset.data.root_pos_w[env_ids]
+
+    quat_box = box_asset.data.root_quat_w[env_ids]
+
+    relative_pos_world = pos_obj - pos_box  #计算世界坐标下的相对向量
+    #箱子坐标系下，箱子中心点到物体的向量
+    pos_local = math_utils.quat_apply_inverse(quat_box, relative_pos_world)  
+
+    x_length, y_length, z_length = box_size
+
+    in_x = torch.abs(pos_local[:, 0]) < (x_length / 2)
+
+    in_y = torch.abs(pos_local[:, 1]) < (y_length / 2)
+
+    in_z = (pos_local[:, 2] > 0) & (pos_local[:, 2] < z_length * 1.5) # 稍微允许高一点点
+
+    return in_x & in_y & in_z
+
+
+def get_rotated_aabb_size(dim_x, dim_y, dim_z, euler_deg, device='cpu'):
+    """
+    输入: 物体原始尺寸 (x, y, z) 和 欧拉角 (相对于父坐标系的度数)
+    输出：在父级坐标系 X, Y, Z 轴上的投影长度。
+    """
+    dims = torch.tensor([dim_x, dim_y, dim_z], device=device, dtype=torch.float32)
+    angles = torch.tensor(euler_deg, device=device, dtype=torch.float32)
+
+    q:torch.Tensor = math_utils.quat_from_euler_xyz(torch.deg2rad(angles[0]), torch.deg2rad(angles[1]), torch.deg2rad(angles[2]))
+
+    basis_vectors = torch.diag(dims)   # shape: (3, 3) -> 每一行代表一个轴向量: [x,0,0], [0,y,0], [0,0,z]
+
+    rot_vectors = math_utils.quat_apply(q.repeat(3, 1), basis_vectors)
+
+    new_dims = torch.abs(rot_vectors).sum(dim=0)
+    
+    return new_dims[0].item(), new_dims[1].item(), new_dims[2].item()

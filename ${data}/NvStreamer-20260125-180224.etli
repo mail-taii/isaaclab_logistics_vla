@@ -1,0 +1,21 @@
+3604,MarkQosNameValue,SurfaceBitDepth,8
+3604,MarkQosNameValue,AdapterWidth,1280
+3604,MarkQosNameValue,AllTransitSelectionValuesForwarded,
+3604,MarkQosNameValue,IsCoProc,0
+3604,MarkQosNameValue,DriverBranch,NVIDIA UNIX x86_64 Kernel Module  575.64  Tue Jun 10 19:18:37 UTC 2025
+3604,MarkQosNameValue,AdapterRefreshRate,60.0
+3604,MarkQosNameValue,Device,NVIDIA GeForce RTX 3090 Ti
+3604,MarkQosNameValue,AdapterHeight,720
+3604,MarkQosNameValue,TransitSelectionValueForwarded,0
+3604,MarkQosNameValue,LtrEnabled,0
+3604,MarkQosNameValue,EncoderInputSurfaceFormat,invalid_format
+3604,MarkQosNameValue,AllTransitSelectionValuesApplied,
+3604,MarkQosNameValue,TransitSelectionValueApplied,0
+3604,MarkQosNameValue,DriverVersion,575.64
+3604,MarkQosNameValue,DataChannelMode,DcSCTP
+3604,MarkQos,StreamServerBackendMode is 2
+3604,MarkQos,stream 0 nvtime::sessionStartTime[us] on server: 248542785821
+3604,MarkQos,RL QOS disabled for stream: 0
+3604,MarkGsBlobStats,
+4002,MarkQos,Number of delayed commands: 0
+4002,MarkGsBlobStats,

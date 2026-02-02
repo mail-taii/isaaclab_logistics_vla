@@ -15,7 +15,7 @@ def euler2quat(axis = 'z',degree = 0):
 
 def euler_to_quat_isaac(r, p, y):
     """
-    输入: r, p, y (可以是标量，也可以是 Tensor)
+    输入: r, p, y  角度制
     输出: (w, x, y, z) 格式的四元数
     """
     # 如果输入是标量，自动转换成 tensor
