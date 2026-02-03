@@ -50,7 +50,7 @@ class CurriculumCfg:
 class Spawn_ss_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment."""
     # Scene settings
-    scene: Spawn_ss_st_sparse_SceneCfg = Spawn_ss_st_sparse_SceneCfg(num_envs=4,env_spacing = 7.0)
+    scene: Spawn_ss_st_sparse_SceneCfg = Spawn_ss_st_sparse_SceneCfg(num_envs=2,env_spacing = 7.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
