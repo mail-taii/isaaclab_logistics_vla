@@ -10,6 +10,8 @@ class Registration():
 
         self._eeframe_configs = collections.OrderedDict()
         self._action_configs = collections.OrderedDict()
+
+        self._env_configs = collections.OrderedDict()
     
     def add_task(self, task_name):
         def wrap(cls):
@@ -53,6 +55,12 @@ class Registration():
             return cls
         return wrap
     
+    def add_env_configs(self, env_config):
+        def wrap(cls):
+            self._env_configs[env_config] = cls
+            return cls
+        return wrap
+    
     def __getitem__(self, key):
         return self._tasks[key] or self._entities[key]
     
@@ -76,6 +84,9 @@ class Registration():
     
     def load_action_configs(self, key):
         return self._action_configs[key]
+    
+    def load_env_configs(self, key):
+        return self._env_configs[key]
     
     def keys(self):
         return self._tasks.keys()
