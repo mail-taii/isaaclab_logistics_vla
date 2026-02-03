@@ -149,7 +149,7 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
                 rand_x = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_x
                 rand_y = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_y
                 
-                z_pos = (item_z / 2.0) + 0.015
+                z_pos = (item_z / 2.0) + 0.015+0.01    #0.015是箱子底厚度
 
                 relative_pos = torch.stack([
                     batch_anchors[:, 0] + rand_x,
