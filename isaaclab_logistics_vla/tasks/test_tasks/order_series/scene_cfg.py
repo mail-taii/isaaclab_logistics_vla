@@ -52,7 +52,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     e_conveyer = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/o_conveyer",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/urdf/G.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/urdf/G.usd",
             scale=(1, 1, 1),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True, 
@@ -67,7 +67,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     e_desk = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/o_desk",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/urdf/F.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/urdf/F.usd",
             scale=(1, 1, 1),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True, 
@@ -80,7 +80,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     s_box_1 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/s_box_1",                                                                                                            
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(
@@ -94,7 +94,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     s_box_2 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/s_box_2",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(
@@ -108,7 +108,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     s_box_3 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/s_box_3",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(
@@ -122,7 +122,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     t_box_1 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/t_box_1",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(
@@ -136,7 +136,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     t_box_2 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/t_box_2",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(
@@ -150,7 +150,7 @@ class OrderSceneCfg(InteractiveSceneCfg):
     t_box_3 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/t_box_3",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             mass_props= sim_utils.MassPropertiesCfg(mass=5.0),
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(

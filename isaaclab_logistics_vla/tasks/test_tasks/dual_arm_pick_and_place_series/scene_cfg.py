@@ -49,7 +49,7 @@ class DualArmPickAndPlaceSceneCfg(InteractiveSceneCfg):
     shelf = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/shelf",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/test_1_5.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/test_1_5.usd",
             scale=(0.001, 0.001, 0.001),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True, 
@@ -64,7 +64,7 @@ class DualArmPickAndPlaceSceneCfg(InteractiveSceneCfg):
     box_1 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Box_1",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(
                 sleep_threshold=0.05, 
@@ -77,7 +77,7 @@ class DualArmPickAndPlaceSceneCfg(InteractiveSceneCfg):
     box_2 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Box_2",
         spawn=UsdFileCfg(
-            usd_path=f"/home/wst/model_files/benchmark/Box.usd",
+            usd_path=f"/home/daniel/fff/model_files/benchmark/Box.usd",
             scale=(1, 1, 1),
             rigid_props=schemas.RigidBodyPropertiesCfg(
                 sleep_threshold=0.05, 

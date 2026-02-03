@@ -7,7 +7,7 @@
             "label": "setup_python_env",
             "type": "shell",
             "linux": {
-                "command": "export CARB_APP_PATH=/home/daniel/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/kit && export ISAAC_PATH=/home/daniel/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim && export EXP_PATH=/home/daniel/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/apps && source /home/daniel/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/setup_python_env.sh && printenv >/home/daniel/anaconda3/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/.vscode/.standalone_examples.env"
+                "command": "export CARB_APP_PATH=/home/daniel/.conda/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/kit && export ISAAC_PATH=/home/daniel/.conda/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim && export EXP_PATH=/home/daniel/.conda/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/apps && source /home/daniel/.conda/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/setup_python_env.sh && printenv >/home/daniel/.conda/envs/env_isaaclab/lib/python3.10/site-packages/isaacsim/.vscode/.standalone_examples.env"
             }
         }
     ]
