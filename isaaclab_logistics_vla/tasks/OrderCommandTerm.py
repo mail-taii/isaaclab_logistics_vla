@@ -26,7 +26,7 @@ from isaaclab_logistics_vla.utils.util import *
 from isaaclab_logistics_vla.utils.path_utils import *
 
 #全局开关（是否需要根据JSON文件生成场景）
-FROM_JSON = 1
+FROM_JSON = 0
 
 class OrderCommandTerm(CommandTerm):
     cfg: OrderCommandTermCfg
@@ -95,54 +95,41 @@ class OrderCommandTerm(CommandTerm):
         # 确保目录存在
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
 
+        #---1. 动态获取任务对应的唯一文件名---
+        self.task_name = env.cfg.__class__.__name__
+        self.task_filename = f"{self.task_name}.jsonl"
+        self.session_file = get_env_order_info_path().joinpath(self.task_filename)
+
         self.from_json = FROM_JSON
         if self.from_json == 1:
-            #---1. 获取文件夹路径---
-            info_dir = get_env_order_info_path()
-            #---2. 搜索目录下所有的session文件---
-            #同时匹配.json和.jsonl，确保向下兼容
-            json_files = glob.glob(os.path.join(info_dir, "session_*.*"))
-            valid_files = [f for f in json_files if f.endswith(('.json', '.jsonl'))]
+            #---消费者模式：读取现有文件---
+            if not self.session_file.exists():
+                raise FileNotFoundError(f"未找到回放文件: {self.session_file}")
             
-            if not valid_files:
-                raise FileNotFoundError(f"在{info_dir}目录下未找到任何session JSON/JSONL文件")
-            
-            #---3. 将所有文件中的环境记录汇总到一个池子里---
             self.replay_data_pool = []
-            for f_path in valid_files:
-                with open(f_path, 'r', encoding='utf-8') as f:
-                    if f_path.endswith('.jsonl'):
-                        #针对标准JSONL文件：逐行读取，每行是一个独立的JSON对象
-                        for line in f:
-                            line = line.strip()
-                            if line:
-                                try:
-                                    self.replay_data_pool.append(json.loads(line))
-                                except json.JSONDecodeError:
-                                    continue
-                    else:
-                        #针对标准JSON文件：整体加载列表
+            with open(self.session_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
                         try:
-                            data = json.load(f)
-                            if isinstance(data, list):
-                                self.replay_data_pool.extend(data)
+                            self.replay_data_pool.append(json.loads(line))
                         except json.JSONDecodeError:
-                            print(f"[Warning]文件损坏，跳过: {f_path}")
-
-            self.num_replay_configs = len(self.replay_data_pool)
-            if self.num_replay_configs == 0:
-                raise RuntimeError("所有文件加载完毕，但未发现有效的环境记录")
-                
-            print(f"[Info]已从{len(valid_files)}个文件中加载了{self.num_replay_configs}个回放场景")
+                            continue
             
-            #初始化回放索引（用于随机或顺序读取）
+            self.num_replay_configs = len(self.replay_data_pool)
+            print(f"[Info]顺序回放模式: 已加载{self.num_replay_configs}条场景记录")
             self.env_replay_ptr = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
             
         else:
-            #---模式0：生成新数据---
-            run_id = time.strftime("%Y%m%d_%H%M%S")
-            self.session_file = get_env_order_info_path().joinpath(f"session_{run_id}.jsonl")
-            self.session_file.touch()
+            #---生产者模式：每次运行代码时覆盖旧文件---
+            #确保父目录存在
+            self.session_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            #使用'w'模式打开并立即关闭，这会清空文件内容
+            with open(self.session_file, 'w', encoding='utf-8') as f:
+                pass 
+        
+            print(f"[Info]生产者模式: 已重置并清空文件{self.task_filename}，开始重新生成...")
 
     
     def _discover_object_instances(self, env: ManagerBasedRLEnv, sku_list: Sequence[str]):
