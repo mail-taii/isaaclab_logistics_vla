@@ -261,35 +261,33 @@ class OrderCommandTerm(CommandTerm):
 
     def _record_order_env_info(self, env_ids: Sequence[int]):
         """
-        高效记录环境信息：通过追加模式写入JSONL，防止内存溢出导致的进程被杀。
-        每行存储一个环境的完整配置。
+        高效记录环境信息：通过追加模式写入任务专属的 JSONL 文件。
+        此函数捕获逻辑 ID 映射及资产的绝对世界位姿，实现 100% 场景还原。
         """
-        #---1. 准备环境ID列表，确保其为可迭代的Python list---
+        #--- 1. 准备环境 ID 列表---
         if isinstance(env_ids, torch.Tensor):
             ids_list = env_ids.tolist()
         else:
             ids_list = list(env_ids)
 
-        #---2. 以追加模式('a')打开文件，这样不会将旧数据读入内存---
+        # --- 2. 以追加模式 ('a') 打开文件 ---
+        # 注意：__init__ 中已通过 'w' 模式清空过旧运行数据，
+        # 这里的 'a' 确保在同一次代码运行过程中的多次 reset 记录能按顺序累积。
         with open(self.session_file, 'a', encoding='utf-8') as f:
             for env_id in ids_list:
-                #---3. 构造单体环境数据结构---
+                # --- 3. 构造基础数据结构 (Snapshot) ---
                 record = {
                     "timestamp": time.time(),
                     "env_id": env_id,
-                    "config_snapshot": {
-                        "num_active_skus": getattr(self.cfg, "num_active_skus", 3),
-                        "max_instances_per_sku": getattr(self.cfg, "max_instances_per_sku", 2),
-                        "num_targets": self.num_targets,
-                        "num_sources": self.num_sources
-                    },
+                    "task_name": self.task_name,
+                    # 核心逻辑 ID 映射：还原物品归属的关键
                     "obj_to_source_id": self.obj_to_source_id[env_id].tolist(),
                     "obj_to_target_id": self.obj_to_target_id[env_id].tolist(),
+                    # 箱体物理位姿记录（用于验证或回放时校验箱子是否移动）
                     "containers": {
                         "source_boxes": [
                             {
                                 "name": self.cfg.source_boxes[i],
-                                "index": i,
                                 "pos": self.source_box_assets[i].data.root_pos_w[env_id].tolist(),
                                 "rot": self.source_box_assets[i].data.root_quat_w[env_id].tolist()
                             } for i in range(len(self.source_box_assets))
@@ -297,7 +295,6 @@ class OrderCommandTerm(CommandTerm):
                         "target_boxes": [
                             {
                                 "name": self.cfg.target_boxes[i],
-                                "index": i,
                                 "pos": self.target_box_assets[i].data.root_pos_w[env_id].tolist(),
                                 "rot": self.target_box_assets[i].data.root_quat_w[env_id].tolist()
                             } for i in range(len(self.target_box_assets))
@@ -307,15 +304,22 @@ class OrderCommandTerm(CommandTerm):
                     "orders": []
                 }
 
-                #---4. 填充物品明细---
+                # --- 4. 填充物品明细 (绝对位姿提取) ---
                 for obj_idx, obj_name in enumerate(self.object_names):
                     is_active = self.is_active_mask[env_id, obj_idx].item()
                     s_idx = self.obj_to_source_id[env_id, obj_idx].item()
                     t_idx = self.obj_to_target_id[env_id, obj_idx].item()
                     
+                    # 确定逻辑角色：target (目标物), distractor (干扰物), none (不活跃)
                     role = "none"
                     if is_active:
                         role = "target" if t_idx != -1 else "distractor"
+
+                    # 提取该环境下的资产位姿
+                    asset = self.object_assets[obj_idx]
+                    # 获取绝对世界坐标 (root_pos_w / root_quat_w)
+                    pos_w = asset.data.root_pos_w[env_id].tolist()
+                    quat_w = asset.data.root_quat_w[env_id].tolist()
 
                     record["items"].append({
                         "instance_name": obj_name,
@@ -323,26 +327,30 @@ class OrderCommandTerm(CommandTerm):
                         "is_active": is_active,
                         "logic_role": {"type": role, "source_box_idx": s_idx, "target_box_idx": t_idx},
                         "spawn_pose": {
-                            "pos": self.object_assets[obj_idx].data.root_pos_w[env_id].tolist(),
-                            "rot": self.object_assets[obj_idx].data.root_quat_w[env_id].tolist()
-                        } if is_active else None
+                            "pos": pos_w,
+                            "rot": quat_w
+                        }
                     })
 
-                #---5. 填充订单明细---
+                # --- 5. 填充订单明细 ---
                 for t_idx in range(self.num_targets):
                     mask = (self.obj_to_target_id[env_id] == t_idx)
                     if mask.any():
                         match_indices = torch.where(mask)[0].tolist()
+                        # 取第一个物品的源箱作为该订单的关联源箱
                         s_idx = self.obj_to_source_id[env_id, match_indices[0]].item()
                         record["orders"].append({
                             "target_box_name": self.cfg.target_boxes[t_idx],
-                            "source_box_index": s_idx,
                             "target_box_index": t_idx,
+                            "source_box_index": s_idx,
                             "required_items": [self.object_names[idx] for idx in match_indices]
                         })
 
-                #---6. 核心操作：将当前record转为单行字符串并写入，末尾加换行符---
+                # --- 6. 核心写入操作 ---
+                # 将 record 字典序列化为单行 JSON 并追加到文件，确保 JSONL 格式正确
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        
+        f.flush()
 
 
     def _update_object_states(self):
