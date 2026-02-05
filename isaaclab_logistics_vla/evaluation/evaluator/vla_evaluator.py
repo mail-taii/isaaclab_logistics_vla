@@ -6,20 +6,27 @@ import time
 
 
 class VLA_Evaluator:
-    def __init__(self,env_cfg,policy = 'random'):
+    def __init__(self, env_cfg, policy='random', from_json=2):
+        self.from_json = from_json
+        
+        #---在初始化环境之前，将参数注入配置---
+        if hasattr(env_cfg.commands, "object_commands"):
+            env_cfg.commands.object_commands.from_json = self.from_json
+            print(f"[Evaluator]指令模式已设置为: {self.from_json}(0:录制, 1:回放, 2:随机)")
+
+        # 初始化环境
         self.env = VLAIsaacEnv(cfg=env_cfg)
         self.isprint = False
 
-        self.lift_duration = 250  # 升降柱抬升阶段持续多少步 (例如 50步 = 1秒 @ 50Hz)
-        self.step_counter = 0    # 内部步数计数器
+        self.lift_duration = 250  
+        self.step_counter = 0    
         
+        # ... 保持原有的 RRT 路径加载逻辑不变 ...
         txt_path = '/home/wst/code/ompl/RRT_path.txt'
-        # 假设 txt_path 指向你的文件
         if os.path.exists(txt_path):
             self.action_trajectory = self._load_and_process_txt(txt_path)
             print(f"[INFO] Successfully loaded {len(self.action_trajectory)} steps from {txt_path}")
         else:
-            print(f"[WARNING] File {txt_path} not found! Will use zeros.")
             self.action_trajectory = None
 
     def _load_and_process_txt(self, file_path):
@@ -90,7 +97,11 @@ class VLA_Evaluator:
         
     def run_evaluation(self):
         i = 1
+        # 环境 reset 时会根据 from_json 决定是随机生成、记录 JSON 还是读取 JSON
         self.env.reset()
+
+        print(f"[INFO] Evaluation started. Mode: {self.from_json}")
+
         while True:
             with torch.inference_mode():
                 actions = self.generate_action(None)
