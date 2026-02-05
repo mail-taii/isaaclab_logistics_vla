@@ -30,10 +30,11 @@ class Spawn_ds_st_sparse_CommandTerm(AssignDSSTCommandTerm):
 
         n_active_skus = getattr(self.cfg, "num_active_skus", 3)      # 本局选几种 SKU
         m_max_per_sku = getattr(self.cfg, "max_instances_per_sku", 2) # 每种选几个
+        num_source_box = getattr(self.cfg, "num_source_box", 2)         # 每局生成几个原料箱
 
         num_envs = len(env_ids)
-        # 那cfg.num_source_boxes 就没用了，直接随机生成 2~3 个箱子??
-        self.num_source_box = torch.randint(low=2, high=4, size=(num_envs,), device=self.device)
+        # 那cfg.num_source_box 就没用了，直接随机生成 2~3 个箱子??
+        #self.num_source_box = torch.randint(low=2, high=4, size=(num_envs,), device=self.device)
 
         for env_id in env_ids:
             num_to_sample = min(n_active_skus, self.num_skus)    #从所有 SKU 中随机选 n 种类
@@ -47,7 +48,7 @@ class Spawn_ds_st_sparse_CommandTerm(AssignDSSTCommandTerm):
             sku_name = self.sku_names[distractor_sku_idx]
             global_indices = self.sku_to_indices[sku_name] # 拿到该 SKU 下所有实例 ID
 
-            for box_id in range (self.num_source_box[env_id]): 
+            for box_id in range (num_source_box[env_id]): 
             
                 # 随机选 1 ~ m 个
                 k = torch.randint(1, min(len(global_indices), m_max_per_sku) + 1, (1,)).item()
@@ -79,6 +80,7 @@ class Spawn_ds_st_sparse_CommandTerm(AssignDSSTCommandTerm):
             env_ids = torch.tensor(env_ids, device=self.device)
         
         num_envs = len(env_ids)
+        num_source_box = getattr(self.cfg, "num_source_box", 2)         # 每局生成几个原料箱
 
         for obj_idx, obj_asset in enumerate(self.object_assets):
             far_position = torch.zeros((num_envs, 3), device=self.device)
@@ -120,7 +122,7 @@ class Spawn_ds_st_sparse_CommandTerm(AssignDSSTCommandTerm):
 
         # 预先生成随机槽位排列，为了让每个箱子的摆放都不一样，增加一个维度 (num_boxes)
         # shape: (num_envs, num_boxes, 6)
-        num_boxes = len(self.num_source_box)
+        num_boxes = len(num_source_box)
         slot_perms = torch.stack([
             torch.rand(num_envs, 6, device=self.device).argsort(dim=1) 
             for _ in range(num_boxes)
