@@ -1,8 +1,0 @@
-{"timestamp": 1770025884.8606186, "env_id": 0}
-{"timestamp": 1770025884.8606367, "env_id": 1}
-{"timestamp": 1770025884.860641, "env_id": 2}
-{"timestamp": 1770025884.8606436, "env_id": 3}
-{"timestamp": 1770025914.9854417, "env_id": 0, "order_completion_rate": 0.0, "mean_action_time": 0.0}
-{"timestamp": 1770025914.9854574, "env_id": 1, "order_completion_rate": 0.0, "mean_action_time": 0.0}
-{"timestamp": 1770025914.9854622, "env_id": 2, "order_completion_rate": 0.0, "mean_action_time": 0.0}
-{"timestamp": 1770025914.9854672, "env_id": 3, "order_completion_rate": 0.0, "mean_action_time": 0.0}
