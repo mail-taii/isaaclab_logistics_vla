@@ -2,6 +2,8 @@ from __future__ import annotations
 import os
 import time
 import json
+import glob
+import random
 
 import torch
 from abc import abstractmethod
@@ -22,6 +24,9 @@ from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
 from isaaclab_logistics_vla.utils.util import *
 from isaaclab_logistics_vla.utils.path_utils import *
+
+#全局开关（是否需要根据JSON文件生成场景）
+FROM_JSON = 0
 
 class OrderCommandTerm(CommandTerm):
     cfg: OrderCommandTermCfg
@@ -90,6 +95,42 @@ class OrderCommandTerm(CommandTerm):
         # 确保目录存在
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
 
+        #---1. 动态获取任务对应的唯一文件名---
+        self.task_name = env.cfg.__class__.__name__
+        self.task_filename = f"{self.task_name}.jsonl"
+        self.session_file = get_env_order_info_path().joinpath(self.task_filename)
+
+        self.from_json = FROM_JSON
+        if self.from_json == 1:
+            #---消费者模式：读取现有文件---
+            if not self.session_file.exists():
+                raise FileNotFoundError(f"未找到回放文件: {self.session_file}")
+            
+            self.replay_data_pool = []
+            with open(self.session_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            self.replay_data_pool.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+            
+            self.num_replay_configs = len(self.replay_data_pool)
+            print(f"[Info]顺序回放模式: 已加载{self.num_replay_configs}条场景记录")
+            self.env_replay_ptr = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+            
+        else:
+            #---生产者模式：每次运行代码时覆盖旧文件---
+            #确保父目录存在
+            self.session_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            #使用'w'模式打开并立即关闭，这会清空文件内容
+            with open(self.session_file, 'w', encoding='utf-8') as f:
+                pass 
+        
+            print(f"[Info]生产者模式: 已重置并清空文件{self.task_filename}，开始重新生成...")
+
     
     def _discover_object_instances(self, env: ManagerBasedRLEnv, sku_list: Sequence[str]):
         """
@@ -134,17 +175,26 @@ class OrderCommandTerm(CommandTerm):
 
     def _resample_command(self, env_ids: Sequence[int]):
         self._save_dynamic_metrics(env_ids)
-        self._assign_objects_boxes(env_ids)
-        
-        # 重置订单箱完成状态
-        self.order_completion[env_ids] = False
-        
-        self._spawn_items_in_source_boxes(env_ids)
-        self.object_states[env_ids] = 0
-        
-        # [修正] 只把 Active 的设为 1 (Pending)
-        active_mask = self.is_active_mask[env_ids]
-        self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
+        if self.from_json == 0:
+            self._assign_objects_boxes(env_ids)
+
+            #重置订单箱完成状态
+            self.order_completion[env_ids] = False
+            self._spawn_items_in_source_boxes(env_ids)
+            self.object_states[env_ids] = 0
+
+            #[修正]只把Active的设为1 (Pending)
+            active_mask = self.is_active_mask[env_ids]
+            self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
+            self._record_order_env_info(env_ids) 
+
+        else:
+            self._resample_from_json(env_ids)
+            self.order_completion[env_ids] = False
+            self.object_states[env_ids] = 0
+            active_mask = self.is_active_mask[env_ids]
+            self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
+
 
     @abstractmethod
     def _assign_objects_boxes(self, env_ids: Sequence[int]):
@@ -154,6 +204,156 @@ class OrderCommandTerm(CommandTerm):
     def _spawn_items_in_source_boxes(self, env_ids: Sequence[int]):
         raise NotImplementedError
     
+    def _resample_from_json(self, env_ids: Sequence[int]):
+        """
+        核心回放函数：从预加载的JSON/JSONL数据池中顺序读取配置，并精确还原环境中的物体状态。
+        """
+        #确保env_ids是Tensor格式，方便后续计算
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids_batch = torch.tensor(env_ids, device=self.device, dtype=torch.long)
+        else:
+            env_ids_batch = env_ids
+
+        for env_id in env_ids_batch:
+            #---1. 顺序从池子中抽取索引---
+            #获取当前环境应该回放的索引
+            current_idx = self.env_replay_ptr[env_id].item()
+            data = self.replay_data_pool[current_idx]
+
+            #---2. 恢复逻辑映射(Tensor)---
+            #必须直接赋值给对应的env_id行
+            self.obj_to_source_id[env_id] = torch.tensor(data["obj_to_source_id"], device=self.device)
+            self.obj_to_target_id[env_id] = torch.tensor(data["obj_to_target_id"], device=self.device)
+            self.is_active_mask[env_id] = (self.obj_to_source_id[env_id] != -1)
+
+            #---3. 恢复物理位姿---
+            #构造一个形状为(1,)的Tensor，因为后续功能函数底层期望接收一个批次的ID
+            single_env_id = torch.tensor([env_id], device=self.device, dtype=torch.long)
+
+            for obj_idx, item_data in enumerate(data["items"]):
+                asset = self.object_assets[obj_idx]
+                
+                if item_data["is_active"] and item_data["spawn_pose"]:
+                    #准备位置和旋转Tensor，形状为(1, 3)和(1, 4)
+                    pos = torch.tensor(item_data["spawn_pose"]["pos"], device=self.device).unsqueeze(0)
+                    rot = torch.tensor(item_data["spawn_pose"]["rot"], device=self.device).unsqueeze(0)
+                    
+                    set_asset_position(
+                        env=self.env,
+                        env_ids=single_env_id,
+                        asset=asset,
+                        position=pos,
+                        quat=rot
+                    )
+                else:
+                    #对于本局不需要出现的非活跃物体，将其位置设在地下深处(z=-100.0)，避免碰撞干扰
+                    far_away_pos = torch.tensor([[0.0, 0.0, -100.0]], device=self.device)
+                    set_asset_position(
+                        env=self.env,
+                        env_ids=single_env_id,
+                        asset=asset,
+                        position=far_away_pos
+                    )
+            #---4. 更新指针：确保下一次重置时指向池子里的下一个场景---
+            #使用当前索引加1并对总场景数取模，实现循环顺序回放(1, 2, ..., N, 1, ...)
+            self.env_replay_ptr[env_id] = (current_idx + 1) % self.num_replay_configs
+                
+
+    def _record_order_env_info(self, env_ids: Sequence[int]):
+        """
+        记录环境信息：将坐标转换为环境局部坐标并存入任务专属的 JSONL。
+        存储逻辑：Local_Pos=World_Pos-Env_Origin，以便于在_resample_from_json当中直接使用set_asset_position进行物品的放置
+        """
+
+        #---1. 准备环境ID列表---
+        if isinstance(env_ids, torch.Tensor):
+            ids_list = env_ids.tolist()
+            env_ids_tensor = env_ids
+        else:
+            ids_list = list(env_ids)
+            env_ids_tensor = torch.tensor(env_ids, device=self.device)
+
+        #获取当前批次环境的原点坐标(Shape: [len(ids_list), 3])
+        #注意：此处假设env.scene.env_origins存储了各环境的世界坐标原点
+        batch_origins = self.env.scene.env_origins[env_ids_tensor]
+
+        #---2. 以追加模式打开文件---
+        with open(self.session_file, 'a', encoding='utf-8') as f:
+            for i, env_id in enumerate(ids_list):
+                #获取该环境对应的原点(1, 3)
+                current_origin = batch_origins[i]
+
+                #---3. 构造单体数据结构---
+                record = {
+                    "timestamp": time.time(),
+                    "env_id": env_id,
+                    "task_name": self.task_name,
+                    "obj_to_source_id": self.obj_to_source_id[env_id].tolist(),
+                    "obj_to_target_id": self.obj_to_target_id[env_id].tolist(),
+                    "containers": {
+                        "source_boxes": [
+                            {
+                                "name": self.cfg.source_boxes[j],
+                                "pos": (self.source_box_assets[j].data.root_pos_w[env_id] - current_origin).tolist(),
+                                "rot": self.source_box_assets[j].data.root_quat_w[env_id].tolist()
+                            } for j in range(len(self.source_box_assets))
+                        ],
+                        "target_boxes": [
+                            {
+                                "name": self.cfg.target_boxes[j],
+                                "pos": (self.target_box_assets[j].data.root_pos_w[env_id] - current_origin).tolist(),
+                                "rot": self.target_box_assets[j].data.root_quat_w[env_id].tolist()
+                            } for j in range(len(self.target_box_assets))
+                        ]
+                    },
+                    "items": [],
+                    "orders": []
+                }
+
+                #---4. 填充物品明细(计算局部坐标)---
+                for obj_idx, obj_name in enumerate(self.object_names):
+                    is_active = self.is_active_mask[env_id, obj_idx].item()
+                    s_idx = self.obj_to_source_id[env_id, obj_idx].item()
+                    t_idx = self.obj_to_target_id[env_id, obj_idx].item()
+                    
+                    role = "target" if (is_active and t_idx != -1) else ("distractor" if is_active else "none")
+
+                    #计算局部坐标：世界坐标-环境原点
+                    if is_active:
+                        world_pos = self.object_assets[obj_idx].data.root_pos_w[env_id]
+                        local_pos = (world_pos - current_origin).tolist()
+                        local_rot = self.object_assets[obj_idx].data.root_quat_w[env_id].tolist()
+                    else:
+                        local_pos = None
+                        local_rot = None
+
+                    record["items"].append({
+                        "instance_name": obj_name,
+                        "is_active": is_active,
+                        "logic_role": {"type": role, "source_box_idx": s_idx, "target_box_idx": t_idx},
+                        "spawn_pose": {
+                            "pos": local_pos,
+                            "rot": local_rot
+                        } if is_active else None
+                    })
+
+                #---5. 填充订单明细---
+                for t_idx in range(self.num_targets):
+                    mask = (self.obj_to_target_id[env_id] == t_idx)
+                    if mask.any():
+                        match_indices = torch.where(mask)[0].tolist()
+                        s_idx = self.obj_to_source_id[env_id, match_indices[0]].item()
+                        record["orders"].append({
+                            "target_box_name": self.cfg.target_boxes[t_idx],
+                            "source_box_index": s_idx,
+                            "target_box_index": t_idx,
+                            "required_items": [self.object_names[idx] for idx in match_indices]
+                        })
+
+                #---6. 写入JSONL---
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
     def _update_object_states(self):
         env_ids = torch.tensor(range(self.num_envs),dtype =torch.int32, device=self.device)
         # A. 在正确的原料箱里? (Pending 的必要条件) (所有变量 Shape 均为 [N, O])

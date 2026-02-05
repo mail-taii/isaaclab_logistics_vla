@@ -11,7 +11,7 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--policy", type=str, default='random', help="Name of the policy.")
 parser.add_argument("--device", type=str, default='cuda:0')
 
-parser.add_argument("--asset_root_path",type=str,default="/home/wst/model_files/benchmark/")
+parser.add_argument("--asset_root_path",type=str,default="/home/mail-robo/Benchmark")
 parser.add_argument("--task_scene_name",type=str,default="Spawn_ss_st_sparse_EnvCfg")
 
 args_cli,_ = parser.parse_known_args()
