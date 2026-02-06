@@ -14,9 +14,9 @@ from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
 SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],2),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],2),
-    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],2),
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],3),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],3),
+    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],3),
 }
 
 
