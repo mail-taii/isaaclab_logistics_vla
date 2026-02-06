@@ -1,15 +1,3 @@
-"""
-测试框架入口脚本
-
-功能：
-1. 启动Isaac Lab环境
-2. 创建Tester实例
-3. 通过瞬移物体模拟各种测试用例
-4. 验证环境指标计算的正确性
-
-使用方式：
-    python scripts/run_test.py --num_envs 4 --device cuda:0
-"""
 import argparse
 
 from isaaclab.app import AppLauncher
@@ -27,10 +15,22 @@ parser.add_argument(
     default=20,
     help="Number of episodes to run PER environment.",
 )
+parser.add_argument("--asset_root_path", type=str, default="/home/wst/model_files/benchmark")
+parser.add_argument("--task_scene_name", type=str, default="Spawn_ss_st_sparse_with_obstacles_EnvCfg")
 args_cli, _ = parser.parse_known_args()
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
+
+import os
+import sys
+
+if not os.path.exists(args_cli.asset_root_path):
+    print(f"资产路径{args_cli.asset_root_path}未配置！请检查")
+    exit()
+else:
+    print(f"Asset Root Path: {args_cli.asset_root_path}")
+    os.environ["ASSET_ROOT_PATH"] = args_cli.asset_root_path
 
 # ============ Isaac Lab imports (must be after AppLauncher) ============
 import torch
@@ -38,10 +38,11 @@ import torch
 import isaaclab_tasks
 import isaaclab_logistics_vla
 
-from isaaclab_logistics_vla.tasks.ss_st_series.sparse_scene.env_cfg import Spawn_ss_st_sparse_EnvCfg
+#from isaaclab_logistics_vla.tasks.ss_st_series.sparse_scene.env_cfg import Spawn_ss_st_sparse_EnvCfg
 from isaaclab_logistics_vla.evaluation.evaluator.VLAIsaacEnv import VLAIsaacEnv
 from isaaclab_logistics_vla.evaluation.tester import Tester, TEST_SUITE
-
+from isaaclab_logistics_vla.utils.register import register
+register.auto_scan("isaaclab_logistics_vla.tasks")
 
 def main():
     """测试主函数"""
@@ -54,7 +55,7 @@ def main():
     print("=" * 60 + "\n")
     
     # ============ 1. 创建环境 ============
-    env_cfg = Spawn_ss_st_sparse_EnvCfg()
+    env_cfg = register.load_env_configs(f'{args_cli.task_scene_name}')()
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.device = args_cli.device
     
