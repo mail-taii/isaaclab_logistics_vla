@@ -27,3 +27,5 @@ class OrderCommandTermCfg(CommandTermCfg):
         prim_path="/Visuals/Command/body_pose"
     )
     debug_vis = False
+
+    from_json: int = 2

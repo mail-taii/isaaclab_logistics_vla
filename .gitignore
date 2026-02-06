@@ -9,6 +9,7 @@ Thumbs.db       # Windows 系统特有
 .vscode/
 .idea/
 logs/
+env_order_info/
 
 venv/
 env/
