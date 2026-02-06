@@ -16,67 +16,61 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-from .scene_cfg import Spawn_ss_mt_sparse_SceneCfg
+from .scene_cfg import Spawn_ss_st_sparse_with_obstacles_SceneCfg
 from .observation_cfg import ObservationsCfg
-from .command_cfg import Spawn_ss_mt_sparse_CommandsCfg
-from .reward_cfg import Spawn_ss_mt_sparse_RewardCfg
-from .event_cfg import Spawn_ss_mt_sparse_EventCfg
+from .command_cfg import Spawn_ss_st_sparse_with_obstacles_CommandsCfg
+from .reward_cfg import Spawn_ss_st_sparse_with_obstacles_RewardCfg
+from .event_cfg import Spawn_ss_st_sparse_with_obstacles_EventCfg
 
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks import mdp
 
 @configclass
 class TerminationsCfg:
-    """SS-MT 任务的终止条件配置。"""
+    """Termination terms for the MDP."""
 
-    # 1. 超时重置
+    # 保留超时重置：这是必须的，否则环境永远不停
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    # 2. 订单全成功重置
-    # 在 SS-MT 中，只有当所有目标箱的物品都放置正确，才触发此终止
     order_success = DoneTerm(
         func=mdp.check_order_completion,
         params={
             "command_name": "order_info", 
-            # 阈值设为 0.999 代表要求所有 target_id != -1 的物品必须全部完成
             "threshold": 0.999, 
         },
     )
 
 @configclass
 class CurriculumCfg:
+    """Curriculum terms for the MDP."""
     pass
 
-@register.add_env_configs('Spawn_ss_mt_sparse_EnvCfg')
+@register.add_env_configs('Spawn_ss_st_sparse_with_obstacles_EnvCfg')
 @configclass
-class Spawn_ss_mt_sparse_EnvCfg(ManagerBasedRLEnvCfg):
-    """单源-多目标 (SS-MT) 物流分拣环境的主配置类。"""
-
-    # --- 场景设置 ---
-    # 增加 env_spacing 确保多目标箱布局时环境不重叠
-    scene: Spawn_ss_mt_sparse_SceneCfg = Spawn_ss_mt_sparse_SceneCfg(num_envs=4, env_spacing=8.0)
-
-    # --- 基础 MDP 构成 ---
+class Spawn_ss_st_sparse_with_obstacles_EnvCfg(ManagerBasedRLEnvCfg):
+    
+    # Scene settings (确保 scene_cfg 中也有对应带后缀的类)
+    scene: Spawn_ss_st_sparse_with_obstacles_SceneCfg = Spawn_ss_st_sparse_with_obstacles_SceneCfg(num_envs=2, env_spacing=7.0)
+    
+    # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions = register.load_action_configs('realman_franka_ee_actionscfg')()
-    commands: Spawn_ss_mt_sparse_CommandsCfg = Spawn_ss_mt_sparse_CommandsCfg()
-
-    # --- 奖励与事件 ---
-    rewards: Spawn_ss_mt_sparse_RewardCfg = Spawn_ss_mt_sparse_RewardCfg()
+    commands: Spawn_ss_st_sparse_with_obstacles_CommandsCfg = Spawn_ss_st_sparse_with_obstacles_CommandsCfg()
+    
+    # MDP settings
+    rewards: Spawn_ss_st_sparse_with_obstacles_RewardCfg = Spawn_ss_st_sparse_with_obstacles_RewardCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-    events: Spawn_ss_mt_sparse_EventCfg = Spawn_ss_mt_sparse_EventCfg()
+    events: Spawn_ss_st_sparse_with_obstacles_EventCfg = Spawn_ss_st_sparse_with_obstacles_EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
         """Post initialization."""
-        # general settings
         self.decimation = 2
-        self.episode_length_s = 10
-        # simulation settings
-        self.sim.dt = 0.01  # 100Hz
+        self.episode_length_s = 4.0         # 增加时长，考虑避障路径更长
+        
+        self.sim.dt = 0.01      # 100Hz
         self.sim.render_interval = self.decimation
 
-        self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.bounce_threshold_velocity = 0.01
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 16 * 1024
