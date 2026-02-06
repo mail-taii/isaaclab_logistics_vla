@@ -13,3 +13,5 @@ logs/
 venv/
 env/
 .env
+
+env_order_info/

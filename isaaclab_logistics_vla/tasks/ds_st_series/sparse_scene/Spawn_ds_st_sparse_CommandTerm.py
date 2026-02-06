@@ -48,7 +48,7 @@ class Spawn_ds_st_sparse_CommandTerm(AssignDSSTCommandTerm):
             sku_name = self.sku_names[distractor_sku_idx]
             global_indices = self.sku_to_indices[sku_name] # 拿到该 SKU 下所有实例 ID
 
-            for box_id in range (num_source_box[env_id]): 
+            for box_id in range (num_source_box): 
             
                 # 随机选 1 ~ m 个
                 k = torch.randint(1, min(len(global_indices), m_max_per_sku) + 1, (1,)).item()
@@ -122,7 +122,7 @@ class Spawn_ds_st_sparse_CommandTerm(AssignDSSTCommandTerm):
 
         # 预先生成随机槽位排列，为了让每个箱子的摆放都不一样，增加一个维度 (num_boxes)
         # shape: (num_envs, num_boxes, 6)
-        num_boxes = len(num_source_box)
+        num_boxes = num_source_box
         slot_perms = torch.stack([
             torch.rand(num_envs, 6, device=self.device).argsort(dim=1) 
             for _ in range(num_boxes)
