@@ -75,7 +75,7 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
     # e_desk = RigidObjectCfg(
     #     prim_path="{ENV_REGEX_NS}/o_desk",
     #     spawn=UsdFileCfg(
-    #         usd_path=f"/home/wst/model_files/benchmark/urdf/F.usd",
+    #         usd_path=f"/home/daniel/fff/model_files/benchmark/urdf/F.usd",
     #         mass_props= sim_utils.MassPropertiesCfg(mass=20.0),
     #         scale=(1, 1, 1),
     #         rigid_props=schemas.RigidBodyPropertiesCfg(
