@@ -14,6 +14,6 @@ class Spawn_ds_st_sparse_CommandTermCfg(OrderCommandTermCfg):
     class_type:type = Spawn_ds_st_sparse_CommandTerm
 
     num_active_skus: int = 3         # 本局选几种 SKU
-    max_instances_per_sku: int = 2   # 每种 SKU 选几个
+    max_instances_per_sku: int = 3   # 每种 SKU 选几个
 
-    num_source_box: int = 2        # 本局生成几个原料箱
+    num_source_box: int = 3        # 本局生成几个原料箱
