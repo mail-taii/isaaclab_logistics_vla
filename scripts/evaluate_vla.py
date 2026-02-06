@@ -39,7 +39,7 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 # --- 修改点 2: 导入你的新任务配置 ---
 # 确保此处的路径指向你新创建的带 obstacles 的文件夹
-from isaaclab_logistics_vla.tasks.ss_st_series.sparse_scene_with_obstacles.env_cfg import Spawn_ss_st_sparse_with_obstacles_EnvCfg
+from isaaclab_logistics_vla.tasks.ss_st_series.sparse_scene.env_cfg import Spawn_ss_st_sparse_with_obstacles_EnvCfg
 
 from isaaclab_logistics_vla.evaluation.evaluator.vla_evaluator import VLA_Evaluator
 
