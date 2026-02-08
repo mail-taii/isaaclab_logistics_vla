@@ -137,12 +137,19 @@ def main():
     parser.add_argument("--seconds", type=float, default=None, help="录制时长（秒）。若设置，则 steps = round(seconds * fps)")
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--out_dir", type=str, default="./camera_videos")
+    parser.add_argument(
+        "--robot_id", type=str, default="realman_dual_left_arm",
+        help="机器人 ID，与 evaluate_vla.py 一致；决定场景中的机器人与相机（get_order_scene_cfg(robot_id)）。",
+    )
     # 这里保留 headless/enable_cameras 参数，是为了和 AppLauncher 接口对齐
     parser.add_argument("--headless", action="store_true", default=False)
     parser.add_argument("--enable_cameras", action="store_true", default=True)  # 默认启用相机
     args_cli, _ = parser.parse_known_args()
     if args_cli.seconds is not None:
         args_cli.steps = max(1, int(round(args_cli.fps * args_cli.seconds)))
+
+    # 录制依赖相机渲染，必须启用相机（与 evaluate_vla.py 一致）
+    args_cli.enable_cameras = True
 
     # AppLauncher 会根据 args_cli.headless / args_cli.enable_cameras 配置 IsaacSim
     app_launcher = AppLauncher(args_cli)
@@ -162,14 +169,24 @@ def main():
     )
     from isaaclab_logistics_vla.evaluation.observation.schema import ObservationRequire
 
-    env_cfg = OrderEnvCfg()
+    # 与 evaluate_vla.py 一致：按 robot_id 构建 env_cfg，scene 由 get_order_scene_cfg(robot_id) 提供（机器人 + 三路相机）
+    env_cfg = OrderEnvCfg(robot_id=args_cli.robot_id)
     env_cfg.sim.device = args_cli.device
     # 挂上 observation 配置，方便 ObservationBuilder 从 observation_manager 里拿到关节信息
     env_cfg.observations = ObservationsCfg()
     # 这里我们已经在 env_cfg 里把 num_envs 固定为 1
 
+    print(f"[INFO] 使用 robot_id={args_cli.robot_id!r}，场景与相机来自 get_order_scene_cfg(robot_id)")
+
     env = VLAIsaacEnv(cfg=env_cfg)
     env.reset()
+
+    # 快速检查：场景中应有 robot 与相机
+    articulations = getattr(env.unwrapped.scene, "articulations", {})
+    if "robot" not in articulations:
+        print("[WARN] scene.articulations 中无 'robot'，请检查 robot_registry 的 scene_robot_key 与 register.load_robot。")
+    else:
+        print("[INFO] 场景已加载 articulation 'robot'。")
 
     # ObservationBuilder：用于从当前 env 抽取标准化 ObservationDict
     builder = ObservationBuilder(env)

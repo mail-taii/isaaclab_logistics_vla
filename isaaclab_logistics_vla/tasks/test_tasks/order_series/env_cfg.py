@@ -24,6 +24,7 @@ from isaaclab_logistics_vla.tasks.test_tasks.order_series.event_cfg import Event
 from isaaclab_logistics_vla.tasks.test_tasks.order_series.reward_cfg import RewardsCfg
 from isaaclab_logistics_vla.tasks.test_tasks.order_series.scene_cfg import OrderSceneCfg, get_order_scene_cfg
 from isaaclab_logistics_vla.utils.register import register
+from isaaclab_logistics_vla.evaluation.robot_registry import get_robot_eval_config
 from isaaclab_logistics_vla.tasks import mdp
 
 
@@ -56,12 +57,15 @@ class OrderEnvCfg(ManagerBasedRLEnvCfg):
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        """Post initialization. 按 robot_id 切换场景（机器人 + 相机绑定）。"""
+        """Post initialization. 按 robot_id 切换场景（机器人 + 相机绑定）与动作配置。"""
+        cfg = get_robot_eval_config(self.robot_id)
         self.scene = get_order_scene_cfg(
             self.robot_id,
             num_envs=self.scene.num_envs,
             env_spacing=self.scene.env_spacing,
         )
+        if getattr(cfg, "action_config_key", None):
+            self.actions = register.load_action_configs(cfg.action_config_key)()
         # general settings
         self.decimation = 2
         self.episode_length_s = 50

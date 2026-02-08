@@ -114,6 +114,75 @@ configs/
 - **run_evaluation()**：env.reset() → 循环：ObservationBuilder.build() → policy.predict(obs_dict) → _convert_actions_by_control_mode()（EE 时 Curobo IK）→ env.step(action) → 录视频、写结果。与旧版一致。
 - **场景机器人说明**：启动时打印场景机器人 USD 路径（来自 env_cfg.scene，与 robot_registry 仅评估侧使用不同），便于核对。
 
+### 2.7.1 vla_evaluator.py 模块展开（核心驱动）
+
+本模块是评估流水线的**唯一驱动**：不实现任何策略逻辑，只负责「建环境 → 取观测 → 调策略 → 转动作（可选 IK）→ step → 录视频/写结果」。所有与 robot_id、相机、策略参数（如 unnorm_key）的衔接都在此完成。
+
+#### 模块职责与定位
+
+| 职责 | 说明 |
+|------|------|
+| **环境与策略** | 用 env_cfg 创建 VLAIsaacEnv；用 policy 名称或实例得到可调用的策略，策略的 unnorm_key 等来自 robot_registry。 |
+| **观测** | 用 ObservationBuilder 从 env 构建 ObservationDict（meta / robot_state / vision / instruction），策略只消费该字典，不直接接触 env 的 group 观测。 |
+| **动作** | 从策略取 action；若策略为 EE 模式，用 Curobo IK 将末端位移转为关节角后再交给 env.step。 |
+| **结果** | 每步可选录多路相机视频；episode 结束时写 EpisodeReport / TaskReport 到 results/。 |
+
+#### 构造函数 `__init__` 流程
+
+1. **创建环境**：`self.env = VLAIsaacEnv(cfg=env_cfg)`。场景中的机器人与相机已由 env_cfg.scene 决定（来自 `get_order_scene_cfg(robot_id)`），此处不再次依赖 robot_id 改场景。
+2. **取机器人评估配置**：`self._robot_eval_cfg = get_robot_eval_config(robot_id)`。得到 arm_dof、platform_joint_name、curobo_*、unnorm_key、camera_config_key、scene_robot_key 等，供后续 IK 与策略创建使用。
+3. **创建策略**：若 `policy` 为字符串，调用 `_make_policy_from_name(policy, self.env, trajectory_path, robot_eval_cfg=self._robot_eval_cfg)`；否则直接使用传入的 policy 实例。OpenVLA 分支会从 `robot_eval_cfg.unnorm_key` 传入策略。
+4. **ObservationBuilder**：`self._obs_builder = ObservationBuilder(self.env)`，以及 `ObservationRequire`、从 scene.sensors 收集的 `_camera_names`，用于 build 时指定需要哪些相机数据。
+5. **视频与结果**：初始化 video_writers、video_output_dir、ResultSaver。
+6. **Curobo IK（可选）**：若 `robot_eval_cfg` 中 curobo_yml_name / curobo_asset_folder / curobo_urdf_name 均非空，从 configs/robot_configs/ 和 assets/robots/ 加载 yml 与 URDF，创建 `IKSolver` 并保存 retract_config，供 EE 模式下的 `_convert_actions_by_control_mode` 使用；否则 EE 模式不可用。
+
+#### 策略工厂 `_make_policy_from_name`
+
+- **入参**：policy_name、env、trajectory_path、**robot_eval_cfg**（来自 `get_robot_eval_config(robot_id)`）。
+- **作用**：根据 policy_name 实例化对应策略；从 env 取 `action_dim`、device。
+- **与 robot_id 的衔接**：当 `policy_name == "openvla"` 时，`unnorm_key = getattr(robot_eval_cfg, "unnorm_key", None) or "bridge_orig"`，并传给 `OpenVLARemotePolicy(action_dim=..., device=..., unnorm_key=unnorm_key)`，保证**每种机器人用对动作归一化 key**。
+- **支持名称**：random、openpi/pi0/openpi_remote、openvla_stub、openvla、rrt/trajectory；其他会 ValueError。
+
+#### 观测与动作提取
+
+- **观测**：`run_evaluation` 每步调用 `self._obs_builder.build(ctx, step_id, require=self._obs_require, camera_names=self._camera_names)`，得到 ObservationDict。相机数据来自 env 的 scene.sensors（即 scene_cfg 中按 robot_id 挂载的三路相机）。
+- **动作**：`_get_action_from_policy(policy, obs_dict)` 统一接口：若策略有 `predict(obs)` 则用其返回值（tensor 或含 "action" 的 dict）；否则 `policy(obs)` 并取 "action"。保证不同策略实现都能被同一循环使用。
+
+#### 动作转换 `_convert_actions_by_control_mode`
+
+- **Joint 模式**：直接返回 `actions`，不做变换。
+- **EE 模式**：
+  1. 若无 `ik_solver` 或 obs_dict 缺少 `robot_state.qpos`，直接报错，避免静默错误。
+  2. 从 env 的 robot data 取当前末端位姿（ee_pos, ee_quat）及 root 位姿；若有 `platform_joint_name`，臂基 = root + 平台高度偏移。
+  3. 策略输出 `actions[:, :3]` 视为末端位移增量（米），得到目标世界系位置；再变换到臂基系，构造 Curobo `Pose`。
+  4. 用多组 seed（retract_config、当前关节、零位）依次调用 `ik_solver.solve_single`；任一收敛则用解出的关节角替换 `actions[:, :arm_dof]` 并返回。
+  5. 若全部未收敛，抛出 RuntimeError 并附带末端/目标/关节角等调试信息。  
+  因此，**EE 模式依赖 robot_registry 的 arm_dof、platform_joint_name、Curobo 配置**，与 robot_id 一一对应。
+
+#### 主循环 `run_evaluation`
+
+1. `env.reset()`；若策略有 `reset()` 则调用。
+2. 循环：  
+   - `obs_dict = _obs_builder.build(...)`  
+   - `actions = _get_action_from_policy(self.policy, obs_dict)`  
+   - `actions = _convert_actions_by_control_mode(actions, obs_dict)`  
+   - `obs, rew, terminated, truncated, info = self.env.step(actions)`  
+   - `_record_frame_from_obs(obs_dict)`（按 vision 中的 cameras/rgb 写多路视频）  
+   - 每 100 步打印一条进度；若 terminated 或 truncated 则退出循环。
+3. 调用 `_save_evaluation_result` 写 EpisodeReport 与 TaskReport。
+4. 若 KeyboardInterrupt 或异常，同样尝试保存结果并在 finally 中关闭视频写入器。
+
+#### 视频录制与结果落盘
+
+- **视频**：首次有观测时 `_init_video_writers(obs_dict)` 根据 vision.cameras / vision.rgb 为每个相机创建 imageio 写入器；之后每步 `_record_frame_from_obs` 写入一帧。相机名与数量来自 scene 中按 robot_id 挂载的传感器，与 configs/camera_configs 一致。
+- **结果**：`_save_evaluation_result` 构造 EpisodeReport（episode_id、success、metrics_read、timing、task_name、episode_length），调用 `result_saver.write_episode` 与 `write_task`，结果落在 results/（episodes.jsonl、task_summary_*.json）。
+
+#### 小结（可作一页 PPT）
+
+- **vla_evaluator.py**：评估的单一入口驱动；**不包含策略逻辑**，只做「env + ObservationBuilder + policy + 动作转换 + step + 视频/结果」。
+- **robot_id 贯穿**：通过 `get_robot_eval_config(robot_id)` 得到 _robot_eval_cfg，用于 Curobo IK（arm_dof、platform、yml/urdf）、策略创建（unnorm_key）、动作转换中的关节维度和臂基变换；场景与相机由 env_cfg.scene（即 get_order_scene_cfg(robot_id)）在构造 env 时已确定。
+- **策略与观测**：策略只消费 ObservationBuilder 产出的 ObservationDict；OpenVLA 的 unnorm_key 在 _make_policy_from_name 中从 robot_eval_cfg 传入，保证多机器人时动作归一化正确。
+
 ### 2.8 策略层（`models/policy/`）
 
 - **Policy**：name、control_mode（joint/ee）、reset、predict(obs) -> (num_envs, action_dim)。
@@ -273,16 +342,17 @@ python scripts/evaluate_vla.py --num_envs 1 --policy openvla --headless --robot_
 7. ObservationBuilder 与 scene 相机来源
 8. VLAIsaacEnv 与关节映射
 9. **评估侧机器人注册表**（arm_dof、unnorm_key、camera_config_key、scene_robot_key）
-10. VLA_Evaluator 流程与策略创建（unnorm_key）
-11. 策略层与 ResultSaver
-12. 数据流总览（robot_id → scene / policy）
-13. **按机器人区分的相机配置（configs/camera_configs）**
-14. get_order_scene_cfg(robot_id) 与 Scene 挂载
-15. OrderEnvCfg(robot_id) 与动态场景
-16. **OpenVLA 接入：unnorm_key 按 robot_id**
-17. **评估使用方法（Realman + OpenVLA 命令示例）**
-18. **接入新机器人：camera_configs + robot_registry**
-19. 总结：多机器人 + 任务通用相机 + 动态 scene/env
+10. **VLA_Evaluator 模块展开**（构造、策略工厂、观测/动作、EE IK、主循环、视频与结果）
+11. VLA_Evaluator 流程与策略创建（unnorm_key）
+12. 策略层与 ResultSaver
+13. 数据流总览（robot_id → scene / policy）
+14. **按机器人区分的相机配置（configs/camera_configs）**
+15. get_order_scene_cfg(robot_id) 与 Scene 挂载
+16. OrderEnvCfg(robot_id) 与动态场景
+17. **OpenVLA 接入：unnorm_key 按 robot_id**
+18. **评估使用方法（Realman + OpenVLA 命令示例）**
+19. **接入新机器人：camera_configs + robot_registry**
+20. 总结：多机器人 + 任务通用相机 + 动态 scene/env
 
 ---
 

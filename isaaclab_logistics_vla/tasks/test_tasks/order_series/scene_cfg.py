@@ -28,8 +28,8 @@ def get_order_scene_cfg(robot_id: str, num_envs: int = 1, env_spacing: float = 5
     # 使用完整 OrderSceneCfg 实例，只替换机器人与相机相关字段
     scene_cfg = OrderSceneCfg(num_envs=num_envs, env_spacing=env_spacing)
     scene_cfg.robot = register.load_robot(robot_key)().replace(prim_path="{ENV_REGEX_NS}/Robot")
-    scene_cfg.robot.init_state.pos = (0.96781, 2.28535, 0.216)
-    scene_cfg.robot.init_state.rot = (1, 0, 0, 0)
+    scene_cfg.robot.init_state.pos = getattr(cfg, "init_pos", None) or (0.96781, 2.28535, 0.216)
+    scene_cfg.robot.init_state.rot = getattr(cfg, "init_rot", None) or (1, 0, 0, 0)
     scene_cfg.ee_frame = register.load_eeframe_configs(f"{robot_key}_eeframe")()
     scene_cfg.head_camera = cameras.head_camera
     scene_cfg.ee_camera = cameras.ee_camera
@@ -228,4 +228,28 @@ class OrderSceneCfg(InteractiveSceneCfg):
         ),
         
         init_state=RigidObjectCfg.InitialStateCfg(pos=(11.58019, 1.33614, 0.86797),rot=(1, 0, 0, 0)),
+    )
+
+    o_cracker_box_2 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/o_cracker_box_2",
+        spawn=UsdFileCfg(
+            usd_path="/home/junzhe/scene/Collected_003_cracker_box/003_cracker_box.usd",
+            scale=(1, 1, 1),
+            rigid_props=schemas.RigidBodyPropertiesCfg(
+                sleep_threshold=0.05
+            ),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(10.0, 1.33614, 0.86797), rot=(1, 0, 0, 0)),
+    )
+
+    o_suger_box_2 = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/o_suger_box_2",
+        spawn=UsdFileCfg(
+            usd_path="/home/junzhe/scene/Collected_004_sugar_box/004_sugar_box.usd",
+            scale=(1, 1, 1),
+            rigid_props=schemas.RigidBodyPropertiesCfg(
+                sleep_threshold=0.05
+            ),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(10.5, 1.33614, 0.86797), rot=(1, 0, 0, 0)),
     )

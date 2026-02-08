@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 
 @dataclass
@@ -40,6 +40,15 @@ class RobotEvalConfig:
     scene_robot_key: Optional[str] = None
     """场景中加载的机器人 asset 键，用于 register.load_robot(scene_robot_key)；None 表示沿用任务默认（如 realman_franka_ee）。"""
 
+    action_config_key: Optional[str] = None
+    """动作配置键，用于 register.load_action_configs(action_config_key)；None 时任务使用默认（如 realman_franka_ee_actionscfg）。"""
+
+    init_pos: Optional[Tuple[float, float, float]] = None
+    """场景中机器人基座初始位置 (x, y, z) 米；None 时用任务默认 (0.96781, 2.28535, 0.216)。可单独调高 z 以够到桌面。"""
+
+    init_rot: Optional[Tuple[float, float, float, float]] = None
+    """场景中机器人基座初始姿态四元数 (w, x, y, z)；None 时用 (1, 0, 0, 0)。"""
+
 
 # 注册表：robot_id -> RobotEvalConfig
 REGISTRY: dict[str, RobotEvalConfig] = {
@@ -53,6 +62,21 @@ REGISTRY: dict[str, RobotEvalConfig] = {
         unnorm_key="bridge_orig",
         camera_config_key="realman",
         scene_robot_key="realman_franka_ee",
+        action_config_key="realman_franka_ee_actionscfg",
+    ),
+    "ur5e": RobotEvalConfig(
+        robot_id="ur5e",
+        arm_dof=6,
+        platform_joint_name=None,
+        curobo_yml_name="ur5e.yml",
+        curobo_asset_folder="ur5e",
+        curobo_urdf_name="ur5e.urdf",
+        unnorm_key="berkeley_autolab_ur5",
+        camera_config_key="ur5e",
+        scene_robot_key="ur5e",
+        action_config_key="ur5e_actionscfg",
+        init_pos=(1.0, 2.0, 1.0),  # z 调高以便够到桌面，可按需改
+        init_rot=(1.0, 0.0, 0.0, 0.0),
     ),
     # 示例：
     # "xarm7": RobotEvalConfig(
@@ -93,4 +117,5 @@ def list_registered_robots() -> list[str]:
 #    并在 configs/robot_configs/ 下提供对应 yml（及 spheres/ 下的碰撞球配置）。
 # 4. 若用 OpenVLA 等需 dataset_statistics 的策略：填 unnorm_key（与动作维度对应），否则 None 用策略默认。
 # 5. 相机：填 camera_config_key，与 configs/camera_configs 中该机器人的 key 一致（任务通用，每个机器人一套相机）。
-# 6. 场景机器人：填 scene_robot_key（register.load_robot 的键）；None 时沿用任务默认。评估时用 --robot_id 与注册表对应即可。
+# 6. 场景机器人：填 scene_robot_key（register.load_robot 的键）；None 时沿用任务默认。
+# 7. 动作配置：填 action_config_key（register.load_action_configs 的键）；None 时任务用默认。评估时用 --robot_id 与注册表对应即可。

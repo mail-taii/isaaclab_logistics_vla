@@ -33,7 +33,7 @@ class RealmanCameraConfig:
         prim_path="{ENV_REGEX_NS}/Robot/panda_left_hand/ee_camera",
         offset=CameraCfg.OffsetCfg(
             pos=(0.0, 0.0, 0.08),
-            rot=euler_to_quat_isaac(r=60, p=180, y=0),
+            rot=euler_to_quat_isaac(r=90, p=180, y=0),
         ),
         spawn=PinholeCameraCfg(
             focal_length=24.0,
@@ -50,7 +50,7 @@ class RealmanCameraConfig:
     top_camera = CameraCfg(
         prim_path="{ENV_REGEX_NS}/top_camera",
         offset=CameraCfg.OffsetCfg(
-            pos=(1.0, 4.0, 4.0),
+            pos=(1.0, 2.0, 4.0),
             rot=euler_to_quat_isaac(r=0, p=180, y=0),
         ),
         spawn=PinholeCameraCfg(

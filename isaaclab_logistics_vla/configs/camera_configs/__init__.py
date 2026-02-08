@@ -7,12 +7,12 @@ from __future__ import annotations
 from typing import Any
 
 from . import realman
+from . import ur5e
 
 # key → 提供 .head_camera / .ee_camera / .top_camera 的类或对象
 CAMERA_CONFIG_REGISTRY: dict[str, Any] = {
     "realman": realman.RealmanCameraConfig,
-    # 接入新机器人示例：
-    # "ur10e": ur10e.UR10eCameraConfig,
+    "ur5e": ur5e.UR5eCameraConfig,
 }
 
 

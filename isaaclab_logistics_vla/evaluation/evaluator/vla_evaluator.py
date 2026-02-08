@@ -462,7 +462,8 @@ class VLA_Evaluator:
                         print(f"[IK] 当前关节构型退化，使用 seed={used_seed_name} 收敛")
 
                     if result is not None and result.success.item():
-                        sol_qpos = result.solution.position.detach()
+                        # 当前环境 Curobo：result.solution 直接为关节解 Tensor（非 JointState.position）
+                        sol_qpos = result.solution.detach()
                         if sol_qpos.dim() == 3:
                             sol_qpos = sol_qpos.squeeze(1)
                         new_actions = actions.clone()
@@ -473,22 +474,11 @@ class VLA_Evaluator:
                             f"IK 成功但 action 维度不足: new_actions.shape[1]={new_actions.shape[1]}, arm_dof={self.arm_dof}"
                         )
 
-                    # 多组 seed 均未收敛，用最后一次 result 报错
-                    print(f"[IK] 已尝试 {len(seeds_to_try)} 组 seed，均未收敛")
-                    # IK 未收敛：不返回原始 action，直接报错并带上详细信息
-                    err_msg = (
-                        "EE 模式下 Curobo IK 未收敛，不返回原始 action。\n"
-                        f"  当前末端位置 (m): {_ee_w.tolist()}\n"
-                        f"  策略位移增量 actions[:, :3]: {_delta.tolist()}\n"
-                        f"  目标末端位置 (m): {_target_w.tolist()}\n"
-                        f"  当前左臂关节角 (rad): {_q.tolist()}\n"
-                        "可能原因：目标超出工作空间、奇异、或 actions[:, :3] 单位/尺度与 ee_pos 不一致（需为米）。"
-                    )
-                    if hasattr(result, "status") and result.status is not None:
-                        err_msg += f"\n  Curobo result.status: {result.status}"
-                    if hasattr(result, "message") and result.message:
-                        err_msg += f"\n  Curobo result.message: {result.message}"
-                    raise RuntimeError(err_msg)
+                    # 多组 seed 均未收敛：跳过本步，保持当前关节角，继续下一帧
+                    print(f"[IK] 已尝试 {len(seeds_to_try)} 组 seed，均未收敛；跳过本步，保持当前关节角继续下一帧")
+                    new_actions = actions.clone()
+                    new_actions[:, : self.arm_dof] = current_qpos[:, : self.arm_dof]
+                    return new_actions
 
             except RuntimeError:
                 raise

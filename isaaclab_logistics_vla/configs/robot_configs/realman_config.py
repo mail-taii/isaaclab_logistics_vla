@@ -6,9 +6,6 @@ from isaaclab.assets import ArticulationCfg, AssetBaseCfg, DeformableObjectCfg, 
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import  OffsetCfg
-from isaaclab_logistics_vla.tasks import mdp
-
-
 from isaaclab_logistics_vla import ISAACLAB_LOGISTICS_VLA_EXT_DIR
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.utils.util import euler2quat
@@ -102,38 +99,3 @@ class RealmanFrankaEE_FrameTransformerCfg(FrameTransformerCfg):
             ),
         )
     ]
-
-@register.add_action_configs('realman_franka_ee_actionscfg')
-@configclass
-class RealmanFrankaEE_ActionsCfg:
-    arm_joints = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["l_joint[1-7]","r_joint[1-7]"], 
-        scale=1.0,
-        use_default_offset=False,
-    )
-
-    left_gripper = mdp.BinaryJointPositionActionCfg(
-        asset_name="robot",
-        # 只写左手的两个手指关节
-        joint_names=["left_left_joint", "left_right_joint"], 
-        # 正则表达式需要匹配上面这俩名字
-        open_command_expr={"left_.*_joint": 0.04}, 
-        close_command_expr={"left_.*_joint": 0.0},
-    )
-
-    right_gripper = mdp.BinaryJointPositionActionCfg(
-        asset_name="robot",
-        # 只写右手的两个手指关节
-        joint_names=["right_left_joint", "right_right_joint"], 
-        # 正则表达式需要匹配上面这俩名字
-        open_command_expr={"right_.*_joint": 0.04},
-        close_command_expr={"right_.*_joint": 0.0},
-    )
-
-    platform = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["platform_joint"], 
-        scale=1.0,
-        use_default_offset=True,
-    )
