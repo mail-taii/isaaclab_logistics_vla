@@ -35,7 +35,7 @@ def camera_rot_look_along_parent_z():
 
 def euler_to_quat_isaac(r, p, y, return_tensor=False):
     """
-    输入: r, p, y (可以是标量，也可以是 Tensor)
+    输入: r, p, y  角度制
     输出: (w, x, y, z) 格式的四元数
     
     参数:

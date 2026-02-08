@@ -1,0 +1,125 @@
+[33mcommit af9a704a22fb90ed1abc0f5100899240686b4d27[m[33m ([m[1;36mHEAD -> [m[1;32mcjx[m[33m, [m[1;31morigin/cjx[m[33m)[m
+Author: RidenShogunei <chenjinxu2003@163.com>
+Date:   Sun Feb 8 21:55:41 2026 +0800
+
+    策略部分
+
+[33mcommit b6e6baa72d620235a41716bab457e16bc7334072[m
+Merge: e3a9735 b7e5322
+Author: Salad14 <1791248631@qq.com>
+Date:   Sun Feb 8 12:17:45 2026 +0800
+
+    Merge branch 'main' into Ljy
+
+[33mcommit 44126dd38bd6f7d8fc058f54ae8e7aad4962db0b[m
+Author: suni2222 <2228301656@qq.com>
+Date:   Fri Feb 6 15:32:05 2026 +0800
+
+    包裹纹理随机化(添加文字)
+
+[33mcommit c3de3b200a478c7c078f1d3b7a3a760230950b4e[m
+Merge: 65576e8 e7898ae
+Author: Mapleyuchen <1619139327@qq.com>
+Date:   Thu Feb 5 20:20:43 2026 +0800
+
+    带有一个障碍物的ss_st_sparse场景 因主分支重要更新,先予提交
+
+[33mcommit e7898aee478ee00a284c3595a2aba3990775b2c5[m
+Author: wst2003 <3304405246@qq.com>
+Date:   Thu Feb 5 17:47:37 2026 +0800
+
+    取消跟踪日志和测试任务代码
+
+[33mcommit d22a5c591ef187a4a086989b26d64ed0a2028bdf[m
+Merge: 4e462d0 47820cc
+Author: Salad14 <1791248631@qq.com>
+Date:   Thu Feb 5 16:54:52 2026 +0800
+
+    Merge branch 'main' into Ljy
+    change for run stack_scene
+
+[33mcommit ff40a6b34166cb1da6fd6980b7fd934888ae4a79[m
+Merge: 7c2a97d 47820cc
+Author: suni2222 <2228301656@qq.com>
+Date:   Thu Feb 5 16:50:04 2026 +0800
+
+    Merge branch 'main' into fzy
+
+[33mcommit 47820cc81c40d11e0133ee2f6ba790f8fa77ed01[m
+Merge: 06d0295 c4aee88
+Author: 王诗腾 <101410591+wst2003@users.noreply.github.com>
+Date:   Thu Feb 5 16:10:05 2026 +0800
+
+    Merge pull request #7 from mail-taii/fq-feature
+    
+    环境/任务JSONL的生成与消费(Fq feature)
+
+[33mcommit 5635c60a86f9124b600ffb55c32ce68f5b47b126[m
+Merge: 1e0f307 bcdf9c4
+Author: Mapleyuchen <1619139327@qq.com>
+Date:   Tue Feb 3 17:40:25 2026 +0800
+
+    Merge branch 'fq-feature' of https://github.com/mail-taii/isaaclab_logistics_vla into fq-feature
+
+[33mcommit fc4472507c4cf2402255e1971dc57cb223a4954e[m
+Author: RidenShogunei <chenjinxu2003@163.com>
+Date:   Mon Feb 2 16:24:42 2026 +0800
+
+    评估模块和观测模块框架搭建
+
+[33mcommit 9d27a3e5eff6fa8533c7b09027fcb2dfa72f4946[m[33m ([m[1;31morigin/revert-1-fq-feature[m[33m)[m
+Author: Mapleyuchen <1619139327@qq.com>
+Date:   Sun Feb 1 18:16:36 2026 +0800
+
+    Revert "This is a test."
+
+[33mcommit db6b91619f9cc506bdca66fab10db3ef352aed22[m
+Merge: 1552b3d bcdf9c4
+Author: Mapleyuchen <1619139327@qq.com>
+Date:   Sun Feb 1 18:15:52 2026 +0800
+
+    Merge pull request #1 from mail-taii/fq-feature
+    
+    NewCommand
+
+[33mcommit bcdf9c444da16b95d9a383fcec315e4bc25aecf7[m
+Author: Mapleyuchen <1619139327@qq.com>
+Date:   Sun Feb 1 17:58:06 2026 +0800
+
+    NewCommand
+
+[33mcommit 3d2895069c38b2ef96ee7e7054f20845d2ac2c41[m
+Merge: f6d5949 1552b3d
+Author: Mapleyuchen <1619139327@qq.com>
+Date:   Sun Jan 25 11:55:30 2026 +0800
+
+    Merge branch 'main' into fq-feature
+
+[33mcommit 1552b3d9e091970fa952dc1740f3ef83477d14e2[m[33m ([m[1;32mmain[m[33m)[m
+Merge: e6b8247 d062ff1
+Author: 王诗腾 <101410591+wst2003@users.noreply.github.com>
+Date:   Sun Jan 25 11:47:01 2026 +0800
+
+    Merge pull request #4 from mail-taii/example
+    
+    Example v0.1
+
+[33mcommit d062ff1ffa99a7599b9c2bbc8340ca4d6a63ea4a[m
+Merge: 9b01ab3 e6b8247
+Author: wst2003 <3304405246@qq.com>
+Date:   Sun Jan 25 11:43:32 2026 +0800
+
+    Merge branch 'main' of https://github.com/mail-taii/isaaclab_logistics_vla into example
+
+[33mcommit 12d79f0436cae0d22427f14053cc3e3e9680cf58[m
+Merge: b6c607d 8ee9c82
+Author: wst2003 <3304405246@qq.com>
+Date:   Fri Jan 23 14:26:33 2026 +0800
+
+    解决冲突
+
+[33mcommit b6c607d26b3a4d802921e333c9dc4621ee7d8527[m
+Author: wst2003 <3304405246@qq.com>
+Date:   Fri Jan 23 14:12:21 2026 +0800
+
+    任务示例
