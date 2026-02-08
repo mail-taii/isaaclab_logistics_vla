@@ -25,9 +25,6 @@ from isaaclab_logistics_vla.utils.constant import *
 from isaaclab_logistics_vla.utils.util import *
 from isaaclab_logistics_vla.utils.path_utils import *
 
-#全局开关（是否需要根据JSON文件生成场景）
-FROM_JSON = 0
-
 class OrderCommandTerm(CommandTerm):
     cfg: OrderCommandTermCfg
 
@@ -95,18 +92,28 @@ class OrderCommandTerm(CommandTerm):
         # 确保目录存在
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
 
-        #---1. 动态获取任务对应的唯一文件名---
+        # --- 1. 基础属性初始化---
+        self.from_json = getattr(cfg, "from_json", 2)
+        self.obstacle_names = getattr(cfg, "obstacles", [])
+        self.obstacle_assets = [self.env.scene[name] for name in self.obstacle_names if name in self.env.scene.keys()]
+        
+        # 预定义回放相关变量，确保在所有模式下都存在这些属性
+        self.env_replay_ptr = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        self.replay_data_pool = []
+        self.num_replay_configs = 0
+        self._current_obs_scales = {} # 用于存储当前生成的 scale，解决 JSON 记录延迟问题
+
+        # --- 2. 动态获取任务对应的唯一文件名 ---
         self.task_name = env.cfg.__class__.__name__
         self.task_filename = f"{self.task_name}.jsonl"
         self.session_file = get_env_order_info_path().joinpath(self.task_filename)
 
-        self.from_json = FROM_JSON
+        # --- 3. 根据模式执行特定初始化 ---
         if self.from_json == 1:
-            #---消费者模式：读取现有文件---
+            # --- 消费者模式 (Replay) ---
             if not self.session_file.exists():
                 raise FileNotFoundError(f"未找到回放文件: {self.session_file}")
             
-            self.replay_data_pool = []
             with open(self.session_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
@@ -117,19 +124,22 @@ class OrderCommandTerm(CommandTerm):
                             continue
             
             self.num_replay_configs = len(self.replay_data_pool)
-            print(f"[Info]顺序回放模式: 已加载{self.num_replay_configs}条场景记录")
-            self.env_replay_ptr = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+            if self.num_replay_configs == 0:
+                raise ValueError(f"回放文件 {self.session_file} 内容为空！")
+                
+            print(f"[Info]顺序回放模式: 已加载 {self.num_replay_configs} 条场景记录")
             
-        else:
-            #---生产者模式：每次运行代码时覆盖旧文件---
-            #确保父目录存在
+        elif self.from_json == 0:
+            # --- 生产者模式 (Record) ---
             self.session_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            #使用'w'模式打开并立即关闭，这会清空文件内容
+            # 清空旧文件
             with open(self.session_file, 'w', encoding='utf-8') as f:
                 pass 
-        
-            print(f"[Info]生产者模式: 已重置并清空文件{self.task_filename}，开始重新生成...")
+            print(f"[Info]生产者模式: 已重置并清空文件 {self.task_filename}，开始重新生成...")
+            
+        else:
+            # --- 纯随机模式 (Default) ---
+            print(f"[Info]纯随机模式: from_json={self.from_json}，不记录也不读取 JSONL")
 
     
     def _discover_object_instances(self, env: ManagerBasedRLEnv, sku_list: Sequence[str]):
@@ -174,26 +184,30 @@ class OrderCommandTerm(CommandTerm):
         return msg
 
     def _resample_command(self, env_ids: Sequence[int]):
+        # 保存动态指标
         self._save_dynamic_metrics(env_ids)
-        if self.from_json == 0:
+        
+        if self.from_json == 1:
+            # 只有模式 1 才执行回放
+            self._resample_from_json(env_ids)
+            # 重置状态
+            self.order_completion[env_ids] = False
+            self.object_states[env_ids] = 0
+            active_mask = self.is_active_mask[env_ids]
+            self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
+        else:
+            # 模式 0 (Record) 和 模式 2 (Random) 都走正常生成流程
             self._assign_objects_boxes(env_ids)
-
-            #重置订单箱完成状态
             self.order_completion[env_ids] = False
             self._spawn_items_in_source_boxes(env_ids)
-            self.object_states[env_ids] = 0
-
-            #[修正]只把Active的设为1 (Pending)
-            active_mask = self.is_active_mask[env_ids]
-            self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
-            self._record_order_env_info(env_ids) 
-
-        else:
-            self._resample_from_json(env_ids)
-            self.order_completion[env_ids] = False
+            
             self.object_states[env_ids] = 0
             active_mask = self.is_active_mask[env_ids]
             self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
+            
+            # 只有模式 0 才执行记录
+            if self.from_json == 0:
+                self._record_order_env_info(env_ids)
 
 
     @abstractmethod
@@ -204,68 +218,13 @@ class OrderCommandTerm(CommandTerm):
     def _spawn_items_in_source_boxes(self, env_ids: Sequence[int]):
         raise NotImplementedError
     
-    def _resample_from_json(self, env_ids: Sequence[int]):
-        """
-        核心回放函数：从预加载的JSON/JSONL数据池中顺序读取配置，并精确还原环境中的物体状态。
-        """
-        #确保env_ids是Tensor格式，方便后续计算
-        if not isinstance(env_ids, torch.Tensor):
-            env_ids_batch = torch.tensor(env_ids, device=self.device, dtype=torch.long)
-        else:
-            env_ids_batch = env_ids
-
-        for env_id in env_ids_batch:
-            #---1. 顺序从池子中抽取索引---
-            #获取当前环境应该回放的索引
-            current_idx = self.env_replay_ptr[env_id].item()
-            data = self.replay_data_pool[current_idx]
-
-            #---2. 恢复逻辑映射(Tensor)---
-            #必须直接赋值给对应的env_id行
-            self.obj_to_source_id[env_id] = torch.tensor(data["obj_to_source_id"], device=self.device)
-            self.obj_to_target_id[env_id] = torch.tensor(data["obj_to_target_id"], device=self.device)
-            self.is_active_mask[env_id] = (self.obj_to_source_id[env_id] != -1)
-
-            #---3. 恢复物理位姿---
-            #构造一个形状为(1,)的Tensor，因为后续功能函数底层期望接收一个批次的ID
-            single_env_id = torch.tensor([env_id], device=self.device, dtype=torch.long)
-
-            for obj_idx, item_data in enumerate(data["items"]):
-                asset = self.object_assets[obj_idx]
-                
-                if item_data["is_active"] and item_data["spawn_pose"]:
-                    #准备位置和旋转Tensor，形状为(1, 3)和(1, 4)
-                    pos = torch.tensor(item_data["spawn_pose"]["pos"], device=self.device).unsqueeze(0)
-                    rot = torch.tensor(item_data["spawn_pose"]["rot"], device=self.device).unsqueeze(0)
-                    
-                    set_asset_position(
-                        env=self.env,
-                        env_ids=single_env_id,
-                        asset=asset,
-                        position=pos,
-                        quat=rot
-                    )
-                else:
-                    #对于本局不需要出现的非活跃物体，将其位置设在地下深处(z=-100.0)，避免碰撞干扰
-                    far_away_pos = torch.tensor([[0.0, 0.0, -100.0]], device=self.device)
-                    set_asset_position(
-                        env=self.env,
-                        env_ids=single_env_id,
-                        asset=asset,
-                        position=far_away_pos
-                    )
-            #---4. 更新指针：确保下一次重置时指向池子里的下一个场景---
-            #使用当前索引加1并对总场景数取模，实现循环顺序回放(1, 2, ..., N, 1, ...)
-            self.env_replay_ptr[env_id] = (current_idx + 1) % self.num_replay_configs
-                
-
     def _record_order_env_info(self, env_ids: Sequence[int]):
         """
         记录环境信息：将坐标转换为环境局部坐标并存入任务专属的 JSONL。
-        存储逻辑：Local_Pos=World_Pos-Env_Origin，以便于在_resample_from_json当中直接使用set_asset_position进行物品的放置
+        存储逻辑：Local_Pos = World_Pos - Env_Origin，增加对障碍物 Scale 的记录以适配随机化。
         """
 
-        #---1. 准备环境ID列表---
+        # --- 1. 准备环境 ID 列表 ---
         if isinstance(env_ids, torch.Tensor):
             ids_list = env_ids.tolist()
             env_ids_tensor = env_ids
@@ -273,17 +232,15 @@ class OrderCommandTerm(CommandTerm):
             ids_list = list(env_ids)
             env_ids_tensor = torch.tensor(env_ids, device=self.device)
 
-        #获取当前批次环境的原点坐标(Shape: [len(ids_list), 3])
-        #注意：此处假设env.scene.env_origins存储了各环境的世界坐标原点
+        # 获取当前批次环境的世界原点坐标 (Shape: [len(ids_list), 3])
         batch_origins = self.env.scene.env_origins[env_ids_tensor]
 
-        #---2. 以追加模式打开文件---
+        # --- 2. 以追加模式打开文件 ---
         with open(self.session_file, 'a', encoding='utf-8') as f:
             for i, env_id in enumerate(ids_list):
-                #获取该环境对应的原点(1, 3)
                 current_origin = batch_origins[i]
 
-                #---3. 构造单体数据结构---
+                # --- 3. 构造基础数据结构 ---
                 record = {
                     "timestamp": time.time(),
                     "env_id": env_id,
@@ -307,10 +264,11 @@ class OrderCommandTerm(CommandTerm):
                         ]
                     },
                     "items": [],
+                    "obstacles": [], # 占位符
                     "orders": []
                 }
 
-                #---4. 填充物品明细(计算局部坐标)---
+                # --- 4. 填充物品明细 ---
                 for obj_idx, obj_name in enumerate(self.object_names):
                     is_active = self.is_active_mask[env_id, obj_idx].item()
                     s_idx = self.obj_to_source_id[env_id, obj_idx].item()
@@ -318,7 +276,6 @@ class OrderCommandTerm(CommandTerm):
                     
                     role = "target" if (is_active and t_idx != -1) else ("distractor" if is_active else "none")
 
-                    #计算局部坐标：世界坐标-环境原点
                     if is_active:
                         world_pos = self.object_assets[obj_idx].data.root_pos_w[env_id]
                         local_pos = (world_pos - current_origin).tolist()
@@ -337,7 +294,30 @@ class OrderCommandTerm(CommandTerm):
                         } if is_active else None
                     })
 
-                #---5. 填充订单明细---
+                # --- 5. 记录障碍物 (适配随机化尺寸) ---
+                # 只有当子类定义了障碍物资产时才进行记录
+                if hasattr(self, "obstacle_assets") and self.obstacle_assets:
+                    for j, asset in enumerate(self.obstacle_assets):
+                        # 获取世界位姿
+                        w_pos = asset.data.root_pos_w[env_id]
+                        w_quat = asset.data.root_quat_w[env_id]
+                        
+                        # 如果资产尚未完全初始化或不支持 scale，则默认为 [1.0, 1.0, 1.0]
+                        if hasattr(asset.data, "root_scale") and asset.data.root_scale is not None:
+                            current_scale = asset.data.root_scale[env_id].tolist()
+                        else:
+                            current_scale = [1.0, 1.0, 1.0]
+
+                        record["obstacles"].append({
+                            "instance_name": self.obstacle_names[j],
+                            "scale": current_scale, # 存储缩放信息，用于 resample 还原
+                            "spawn_pose": {
+                                "pos": (w_pos - current_origin).tolist(),
+                                "rot": w_quat.tolist()
+                            }
+                        })
+
+                # --- 6. 填充订单明细 ---
                 for t_idx in range(self.num_targets):
                     mask = (self.obj_to_target_id[env_id] == t_idx)
                     if mask.any():
@@ -350,8 +330,85 @@ class OrderCommandTerm(CommandTerm):
                             "required_items": [self.object_names[idx] for idx in match_indices]
                         })
 
-                #---6. 写入JSONL---
+                # --- 7. 写入 JSONL ---
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+    def _resample_from_json(self, env_ids: Sequence[int]):
+        """
+        核心回放函数：从预加载的 JSON/JSONL 数据池中顺序读取配置，
+        并精确还原环境中的物体状态（包含随机化后的障碍物尺寸）。
+        """
+        # 确保 env_ids 是 Tensor 格式
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids_batch = torch.tensor(env_ids, device=self.device, dtype=torch.long)
+        else:
+            env_ids_batch = env_ids
+
+        for env_id in env_ids_batch:
+            # --- 1. 顺序从池子中抽取索引 ---
+            current_idx = self.env_replay_ptr[env_id].item()
+            data = self.replay_data_pool[current_idx]
+
+            # --- 2. 恢复逻辑映射 (Tensor) ---
+            self.obj_to_source_id[env_id] = torch.tensor(data["obj_to_source_id"], device=self.device)
+            self.obj_to_target_id[env_id] = torch.tensor(data["obj_to_target_id"], device=self.device)
+            self.is_active_mask[env_id] = (self.obj_to_source_id[env_id] != -1)
+
+            # 构造用于底层接口的批次 ID (Shape: [1])
+            single_env_id = env_id.unsqueeze(0) if env_id.dim() == 0 else env_id
+
+            # --- 3. 还原物品 (is_active/is_not_active) ---
+            for obj_idx, item_data in enumerate(data["items"]):
+                asset = self.object_assets[obj_idx]
+                
+                if item_data["is_active"] and item_data["spawn_pose"]:
+                    pos = torch.tensor(item_data["spawn_pose"]["pos"], device=self.device).unsqueeze(0)
+                    rot = torch.tensor(item_data["spawn_pose"]["rot"], device=self.device).unsqueeze(0)
+                    
+                    set_asset_position(
+                        env=self.env,
+                        env_ids=single_env_id,
+                        asset=asset,
+                        position=pos,
+                        quat=rot
+                    )
+                else:
+                    # 非活跃物品：隐藏到地下深处并清空速度
+                    far_away_pos = torch.tensor([[0.0, 0.0, -100.0]], device=self.device)
+                    set_asset_position(self.env, single_env_id, asset, far_away_pos)
+                    if hasattr(asset, "write_root_velocity_to_sim"):
+                        asset.write_root_velocity_to_sim(torch.zeros((1, 6), device=self.device), env_ids=single_env_id)
+
+            # --- 4. 还原障碍物 ---
+            obstacles_data = data.get("obstacles", [])
+            for obs in obstacles_data:
+                obs_name = obs["instance_name"]
+                if obs_name in self.env.scene.keys():
+                    asset = self.env.scene[obs_name]
+                    
+                    # A. 还原缩放 (Scale) - 必须在位姿还原之前或同时进行，以确保物理边界正确
+                    if "scale" in obs and hasattr(asset, "write_root_scale_to_sim"):
+                        target_scale = torch.tensor(obs["scale"], device=self.device).unsqueeze(0)
+                        asset.write_root_scale_to_sim(target_scale, env_ids=single_env_id)
+                    
+                    # B. 还原位姿 (Pose)
+                    pos = torch.tensor(obs["spawn_pose"]["pos"], device=self.device)
+                    rot = torch.tensor(obs["spawn_pose"]["rot"], device=self.device)
+                    world_pos = pos + self.env.scene.env_origins[env_id]
+                    root_pose = torch.cat([world_pos, rot]).unsqueeze(0)
+                    
+                    asset.write_root_pose_to_sim(root_pose, env_ids=single_env_id)
+                    
+                    # C. 速度清零：防止上一局残留的动量影响新一局
+                    asset.write_root_velocity_to_sim(torch.zeros((1, 6), device=self.device), env_ids=single_env_id)
+                    
+                    # D. 强制同步内部数据缓冲区 (data.root_pos_w 等)
+                    if hasattr(asset, "reset"):
+                        asset.reset(env_ids=single_env_id)
+            
+            # --- 5. 更新指针：指向下一个场景配置 ---
+            self.env_replay_ptr[env_id] = (current_idx + 1) % self.num_replay_configs
 
 
     def _update_object_states(self):

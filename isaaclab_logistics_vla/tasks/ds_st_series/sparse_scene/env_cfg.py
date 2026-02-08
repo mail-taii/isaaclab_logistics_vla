@@ -16,13 +16,12 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-from isaaclab_logistics_vla import ISAACLAB_LOGISTICS_VLA_EXT_DIR
+from .scene_cfg import Spawn_ds_st_sparse_SceneCfg
+from .observation_cfg import ObservationsCfg
+from .command_cfg import Spawn_ds_st_sparse_CommandsCfg
+from .reward_cfg import Spawn_ds_st_sparse_RewardCfg
+from .event_cfg import Spawn_ds_st_sparse_EventCfg
 
-from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.command_cfg import CommandsCfg
-from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.observation_cfg import ObservationsCfg
-from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.event_cfg import EventCfg
-from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.reward_cfg import RewardsCfg
-from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.scene_cfg import DualArmPickAndPlaceSceneCfg
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks import mdp
 
@@ -33,34 +32,40 @@ class TerminationsCfg:
     # 保留超时重置：这是必须的，否则环境永远不停
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
+    order_success = DoneTerm(
+        func=mdp.check_order_completion,
+        params={
+            "command_name": "order_info", 
+            "threshold": 0.999, 
+        },
+    )
+
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
     pass
 
+@register.add_env_configs('Spawn_ds_st_sparse_EnvCfg')
 @configclass
-class DualArmPickAndPlaceEnvCfg(ManagerBasedRLEnvCfg):
+class Spawn_ds_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment."""
-    # def __init__(self):
-    #     super.__init__()
-
     # Scene settings
-    scene: DualArmPickAndPlaceSceneCfg = DualArmPickAndPlaceSceneCfg(num_envs=1,env_spacing = 2.0)
+    scene: Spawn_ds_st_sparse_SceneCfg = Spawn_ds_st_sparse_SceneCfg(num_envs=4,env_spacing = 7.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
-    commands: CommandsCfg = CommandsCfg()
+    commands: Spawn_ds_st_sparse_CommandsCfg = Spawn_ds_st_sparse_CommandsCfg()
     # MDP settings
-    rewards: RewardsCfg = RewardsCfg()
+    rewards: Spawn_ds_st_sparse_RewardCfg = Spawn_ds_st_sparse_RewardCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-    events: EventCfg = EventCfg()
+    events: Spawn_ds_st_sparse_EventCfg = Spawn_ds_st_sparse_EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
         """Post initialization."""
         # general settings
         self.decimation = 2
-        self.episode_length_s = 50
+        self.episode_length_s = 10
         # simulation settings
         self.sim.dt = 0.01  # 100Hz
         self.sim.render_interval = self.decimation
