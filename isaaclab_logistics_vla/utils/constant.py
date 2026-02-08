@@ -39,7 +39,6 @@ TOMATO_SOUP_CAN_PARAMS = {
     'Y_LENGTH':0.10,
     'Z_LENGTH':0.07,
     'SPARSE_ORIENT':(90,0,0)
-<<<<<<< HEAD
 }
 
 PLASTIC_PACKAGE_PARAMS = {
@@ -64,6 +63,4 @@ SFSMALL_PARAMS = {
     'Y_LENGTH':0.43,
     'Z_LENGTH':0.08,
     'SPARSE_ORIENT':(0,0,0)
-=======
->>>>>>> main
 }

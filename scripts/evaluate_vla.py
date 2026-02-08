@@ -13,13 +13,8 @@ parser.add_argument("--device", type=str, default='cuda:0')
 # 新增：FROM_JSON 参数，0: 生成JSON, 1: 消费JSON, 2: 独立随机(默认)
 parser.add_argument("--from_json", type=int, default=0, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
-<<<<<<< HEAD
 parser.add_argument("--asset_root_path",type=str,default="/home/junzhe/code/model/Benchmark/")
 parser.add_argument("--task_scene_name",type=str,default="Spawn_ss_st_stack_EnvCfg")
-=======
-parser.add_argument("--asset_root_path",type=str,default="/home/wst/model_files/benchmark")
-parser.add_argument("--task_scene_name",type=str,default="Spawn_ds_st_sparse_EnvCfg")
->>>>>>> main
 
 args_cli, _ = parser.parse_known_args()
 
@@ -42,12 +37,9 @@ import isaaclab_tasks
 import isaaclab_logistics_vla
 from isaaclab_tasks.utils import parse_env_cfg
 
-<<<<<<< HEAD
-from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.env_cfg import DualArmPickAndPlaceEnvCfg 
-from isaaclab_logistics_vla.tasks.test_tasks.order_series.env_cfg import OrderEnvCfg # 我要把这里换成我的任务
+#from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.env_cfg import DualArmPickAndPlaceEnvCfg 
+#from isaaclab_logistics_vla.tasks.test_tasks.order_series.env_cfg import OrderEnvCfg # 我要把这里换成我的任务
 from isaaclab_logistics_vla.tasks.ss_st_series.stack_scene.env_cfg import Spawn_ss_st_stack_EnvCfg
-=======
->>>>>>> main
 from isaaclab_logistics_vla.evaluation.evaluator.vla_evaluator import VLA_Evaluator
 
 from isaaclab_logistics_vla.utils.register import register

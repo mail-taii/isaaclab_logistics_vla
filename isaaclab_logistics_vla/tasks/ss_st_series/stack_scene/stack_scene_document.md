@@ -93,5 +93,3 @@
 | `Spawn_ss_st_stack_CommandTermCfg.py` | 增加 max_stack_height、distractor_mode 默认值。 |
 | `Spawn_ss_st_stack_CommandTerm.py` | 重写 _assign_objects_boxes（随机原料箱）、_spawn_items_in_source_boxes（两摞+散放），以及堆叠相关辅助方法；_get_raw_params 需随 SKU 扩展。 |
 | `env_cfg.py` / `event_cfg.py` / `observation_cfg.py` / `reward_cfg.py` | 与 sparse 结构相同，仅替换为 stack 的 Scene/Commands/Event/Reward。 |
-
-以上为 stack_scene 相对 sparse_scene 的复用方式、多出部分、设计与扩物步骤的简要说明。
