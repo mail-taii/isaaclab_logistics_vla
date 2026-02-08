@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import torch
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
@@ -28,8 +27,7 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
     核心逻辑：
     1. 目标物和干扰物分开成不同的摞
     2. 按底面积从大到小排序（最大面朝下）
-    3. 圆柱体（罐头）特殊处理：放在方盒最上面且只放一个，或单独成摞
-    4. 从3个原料箱中随机选一个生成
+    3. 从3个原料箱中随机选一个生成（仅方盒类物品）
     """
 
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
@@ -46,43 +44,58 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
         return cache
 
     def _get_raw_params(self, obj_name: str) -> dict:
-        """获取原始 SKU 参数（复用 sparse_scene 的逻辑）"""
+        """获取原始 SKU 参数"""
         if "cracker" in obj_name:
             return CRACKER_BOX_PARAMS
         elif "sugar" in obj_name:
             return SUGER_BOX_PARAMS
-        elif "soup" in obj_name:
-            return TOMATO_SOUP_CAN_PARAMS
+        elif "plastic_package" in obj_name:
+            # 塑料包裹缩放到0.5倍，需要返回缩放后的尺寸
+            scale = 0.5
+            return {
+                'USD_PATH': PLASTIC_PACKAGE_PARAMS['USD_PATH'],
+                'X_LENGTH': PLASTIC_PACKAGE_PARAMS['X_LENGTH'] * scale,
+                'Y_LENGTH': PLASTIC_PACKAGE_PARAMS['Y_LENGTH'] * scale,
+                'Z_LENGTH': PLASTIC_PACKAGE_PARAMS['Z_LENGTH'] * scale,
+                'SPARSE_ORIENT': PLASTIC_PACKAGE_PARAMS['SPARSE_ORIENT'],
+            }
+        elif "sf_big" in obj_name:
+            scale = 0.5
+            return {
+                'USD_PATH': SFBIG_PARAMS['USD_PATH'],
+                'X_LENGTH': SFBIG_PARAMS['X_LENGTH'] * scale,
+                'Y_LENGTH': SFBIG_PARAMS['Y_LENGTH'] * scale,
+                'Z_LENGTH': SFBIG_PARAMS['Z_LENGTH'] * scale,
+                'SPARSE_ORIENT': SFBIG_PARAMS['SPARSE_ORIENT'],
+            }
+        elif "sf_small" in obj_name:
+            scale = 0.4
+            return {
+                'USD_PATH': SFSMALL_PARAMS['USD_PATH'],
+                'X_LENGTH': SFSMALL_PARAMS['X_LENGTH'] * scale,
+                'Y_LENGTH': SFSMALL_PARAMS['Y_LENGTH'] * scale,
+                'Z_LENGTH': SFSMALL_PARAMS['Z_LENGTH'] * scale,
+                'SPARSE_ORIENT': SFSMALL_PARAMS['SPARSE_ORIENT'],
+            }
         else:
             return CRACKER_BOX_PARAMS  # 默认
 
     def _compute_stack_params(self, params: dict) -> dict:
-        """根据现有参数动态计算堆叠参数"""
-        is_cylinder = 'RADIUS' in params
+        """根据现有参数动态计算堆叠参数（仅方盒）"""
+        x, y, z = params['X_LENGTH'], params['Y_LENGTH'], params['Z_LENGTH']
 
-        if is_cylinder:
-            # 圆柱体：直立堆叠
-            radius = params['RADIUS']
-            base_area = math.pi * radius * radius
-            stack_height = params['Y_LENGTH']
-            stack_orient = (0, 0, 0)  # 直立
-        else:
-            # 方盒：平放堆叠（最大面朝下）
-            x, y, z = params['X_LENGTH'], params['Y_LENGTH'], params['Z_LENGTH']
+        # 选择最大的两个维度作为底面，最小维度作为高度
+        dims = sorted([x, y, z], reverse=True)
+        base_area = dims[0] * dims[1]  # 最大面积
+        stack_height = dims[2]  # 最小维度作为高度
 
-            # 选择最大的两个维度作为底面，最小维度作为高度
-            dims = sorted([x, y, z], reverse=True)
-            base_area = dims[0] * dims[1]  # 最大面积
-            stack_height = dims[2]  # 最小维度作为高度
-
-            # 计算需要的旋转角度使最小维度朝上
-            stack_orient = self._compute_orient_for_min_height(x, y, z)
+        # 计算需要的旋转角度使最小维度朝上
+        stack_orient = self._compute_orient_for_min_height(x, y, z)
 
         return {
             'base_area': base_area,
             'stack_height': stack_height,
             'stack_orient': stack_orient,
-            'is_cylinder': is_cylinder,
         }
 
     def _compute_orient_for_min_height(self, x: float, y: float, z: float) -> tuple:
@@ -172,9 +185,9 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
             # 2.1 分离目标物和干扰物
             target_objs, distractor_objs = self._split_objects(env_id_item)
 
-            # 2.2 目标物排序并堆叠（考虑罐头特殊规则）
+            # 2.2 目标物排序并堆叠
             if target_objs:
-                self._spawn_stack_with_cylinder_rule(
+                self._spawn_stack(
                     env_id=env_id_item,
                     obj_indices=target_objs,
                     anchor=anchors[0],
@@ -185,7 +198,7 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
             if distractor_objs:
                 distractor_mode = getattr(self.cfg, "distractor_mode", "stack")
                 if distractor_mode == "stack":
-                    self._spawn_stack_with_cylinder_rule(
+                    self._spawn_stack(
                         env_id=env_id_item,
                         obj_indices=distractor_objs,
                         anchor=anchors[1],
@@ -216,103 +229,66 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
             return self._stack_params_cache[self.object_names[idx]]['base_area']
         return sorted(obj_indices, key=get_area, reverse=True)
 
-    def _separate_cylinders(self, obj_indices: list) -> tuple[list, list]:
-        """将物品分为方盒和圆柱体"""
-        boxes = []
-        cylinders = []
-
-        for idx in obj_indices:
-            if self._stack_params_cache[self.object_names[idx]]['is_cylinder']:
-                cylinders.append(idx)
-            else:
-                boxes.append(idx)
-
-        return boxes, cylinders
-
     def _get_stack_anchors(self) -> torch.Tensor:
-        """获取箱内堆叠槽位锚点（2个位置）"""
+        """获取箱内堆叠槽位锚点（2个位置），沿箱子长边 Y 方向分成两份，避免挤飞"""
         box_x = WORK_BOX_PARAMS['X_LENGTH']
         box_y = WORK_BOX_PARAMS['Y_LENGTH']
 
-        # 将箱子分为左右两个区域
+        # 沿长边 Y 分为前后两区（X 居中）
         return torch.tensor([
-            [-box_x / 4, 0],   # 左侧（目标摞）
-            [box_x / 4, 0],    # 右侧（干扰摞）
+            [0, -box_y / 4],   # 前侧（目标摞）
+            [0, box_y / 4],   # 后侧（干扰摞）
         ], device=self.device)
 
-    def _spawn_stack_with_cylinder_rule(self, env_id: int, obj_indices: list, anchor, box_idx: int):
+    def _get_scatter_anchors(self) -> list:
+        """获取散放物品的锚点（箱子角落位置）"""
+        box_x = WORK_BOX_PARAMS['X_LENGTH']
+        box_y = WORK_BOX_PARAMS['Y_LENGTH']
+        margin = 0.05
+        corner_positions = [
+            (box_x / 2 - margin, box_y / 2 - margin),
+            (-box_x / 2 + margin, box_y / 2 - margin),
+            (box_x / 2 - margin, -box_y / 2 + margin),
+            (-box_x / 2 + margin, -box_y / 2 + margin),
+        ]
+        return [torch.tensor([p[0], p[1]], device=self.device) for p in corner_positions]
+
+    def _spawn_stack(self, env_id: int, obj_indices: list, anchor, box_idx: int):
         """
-        堆叠物品，应用罐头特殊规则：
-        - 罐头要么放在方盒最上面且只放一个
-        - 要么单独起一摞
+        堆叠方盒物品：按底面积排序，最多堆叠 max_stack_height 个，其余散放在角落。
         """
         max_stack_height = getattr(self.cfg, "max_stack_height", 4)
+        sorted_objs = self._sort_by_base_area(obj_indices)
+        objs_to_stack = sorted_objs[:max_stack_height]
+        objs_to_scatter = sorted_objs[max_stack_height:]
 
-        # 分离方盒和圆柱体
-        boxes, cylinders = self._separate_cylinders(obj_indices)
-
-        # 方盒按底面积排序
-        sorted_boxes = self._sort_by_base_area(boxes)
-
-        # 计算方盒摞的高度
-        box_count = len(sorted_boxes)
-
-        # 决定罐头的放置方式
-        cylinder_on_top = None
-        cylinders_separate = []
-
-        if cylinders:
-            if box_count > 0 and box_count < max_stack_height:
-                # 方盒摞未满，可以放一个罐头在上面
-                cylinder_on_top = cylinders[0]
-                cylinders_separate = cylinders[1:]
-            else:
-                # 方盒摞已满或没有方盒，所有罐头单独成摞
-                cylinders_separate = cylinders
-
-        # 生成方盒摞
         z_offset = 0.015  # 箱底厚度
-        for obj_idx in sorted_boxes:
+        for obj_idx in objs_to_stack:
             z_offset = self._place_single_object(env_id, obj_idx, anchor, box_idx, z_offset)
 
-        # 在方盒上面放一个罐头
-        if cylinder_on_top is not None:
-            self._place_single_object(env_id, cylinder_on_top, anchor, box_idx, z_offset)
-
-        # 生成单独的罐头摞（使用偏移的锚点）
-        if cylinders_separate:
-            # 为单独的罐头摞使用一个偏移的位置
-            cylinder_anchor = anchor.clone()
-            cylinder_anchor[0] += WORK_BOX_PARAMS['X_LENGTH'] / 6  # 稍微偏移
-
-            z_offset_cylinder = 0.015
-            for obj_idx in cylinders_separate:
-                z_offset_cylinder = self._place_single_object(
-                    env_id, obj_idx, cylinder_anchor, box_idx, z_offset_cylinder
-                )
+        if objs_to_scatter:
+            scatter_anchors = self._get_scatter_anchors()
+            for i, obj_idx in enumerate(objs_to_scatter):
+                scatter_anchor = scatter_anchors[i % len(scatter_anchors)]
+                self._place_single_object(env_id, obj_idx, scatter_anchor, box_idx, 0.015)
 
     def _place_single_object(self, env_id: int, obj_idx: int, anchor, box_idx: int, z_offset: float) -> float:
-        """放置单个物品，返回新的 z_offset"""
+        """放置单个方盒物品，返回新的 z_offset"""
         params = self._stack_params_cache[self.object_names[obj_idx]]
-
         stack_height = params['stack_height']
-        is_cylinder = params['is_cylinder']
 
-        # XY 方向的抖动（圆柱体抖动更小）
-        jitter = 0.005 if is_cylinder else 0.01
-        rand_x = (torch.rand(1, device=self.device) * 2 - 1) * jitter
-        rand_y = (torch.rand(1, device=self.device) * 2 - 1) * jitter
+        jitter = 0.01
+        rand_x = (torch.rand(1, device=self.device) * 2 - 1).item() * jitter
+        rand_y = (torch.rand(1, device=self.device) * 2 - 1).item() * jitter
 
         relative_pos = torch.tensor([
-            anchor[0].item() + rand_x.item(),
-            anchor[1].item() + rand_y.item(),
+            anchor[0].item() + rand_x,
+            anchor[1].item() + rand_y,
             z_offset + stack_height / 2
         ], device=self.device).unsqueeze(0)
 
-        # 计算姿态
         orient = params['stack_orient']
         relative_quat = euler_to_quat_isaac(orient[0], orient[1], orient[2])
-        # euler_to_quat_isaac 已经返回 [1, 4] 形状，无需再 unsqueeze
 
         # 放置物品
         set_asset_relative_position(
@@ -346,21 +322,18 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
 
             params = self._stack_params_cache[self.object_names[obj_idx]]
             stack_height = params['stack_height']
-
-            # 随机抖动
             jitter = 0.01
-            rand_x = (torch.rand(1, device=self.device) * 2 - 1) * jitter
-            rand_y = (torch.rand(1, device=self.device) * 2 - 1) * jitter
+            rand_x = (torch.rand(1, device=self.device) * 2 - 1).item() * jitter
+            rand_y = (torch.rand(1, device=self.device) * 2 - 1).item() * jitter
 
             relative_pos = torch.tensor([
-                anchor[0].item() + rand_x.item(),
-                anchor[1].item() + rand_y.item(),
+                anchor[0].item() + rand_x,
+                anchor[1].item() + rand_y,
                 0.015 + stack_height / 2
             ], device=self.device).unsqueeze(0)
 
             orient = params['stack_orient']
             relative_quat = euler_to_quat_isaac(orient[0], orient[1], orient[2])
-            # euler_to_quat_isaac 已经返回 [1, 4] 形状，无需再 unsqueeze
 
             set_asset_relative_position(
                 env=self.env,

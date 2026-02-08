@@ -13,11 +13,13 @@ from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
-# SKU 定义（与 sparse_scene 相同）
+# SKU 定义: (usd_path, count, scale)，仅方盒类物品
 SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'], 2),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'], 2),
-    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'], 2),
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'], 2, 1.0),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'], 2, 1.0),
+    "plastic_package": (PLASTIC_PACKAGE_PARAMS['USD_PATH'], 2, 0.5),  # 缩放到0.5倍
+    "sf_big": (SFBIG_PARAMS['USD_PATH'], 2, 0.5),    # 缩放到0.5倍
+    "sf_small": (SFSMALL_PARAMS['USD_PATH'], 2, 0.4),
 }
 
 
@@ -32,8 +34,8 @@ class Spawn_ss_st_stack_SceneCfg(BaseOrderSceneCfg):
     ee_frame: FrameTransformerCfg = register.load_eeframe_configs('realman_franka_ee_eeframe')()
 
 
-# 动态注入 SKU 实例（与 sparse_scene 相同）
-for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
+# 动态注入 SKU 实例
+for sku_name, (usd_path, count, scale) in SKU_DEFINITIONS.items():
     for i in range(count):
         instance_name = f"{sku_name}_{i}"
 
@@ -41,7 +43,7 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
             prim_path=f"{{ENV_REGEX_NS}}/{instance_name}",
             spawn=UsdFileCfg(
                 usd_path=usd_path,
-                scale=(1.0, 1.0, 1.0),
+                scale=(scale, scale, scale),
                 rigid_props=schemas.RigidBodyPropertiesCfg(
                     sleep_threshold=0.05
                 ),

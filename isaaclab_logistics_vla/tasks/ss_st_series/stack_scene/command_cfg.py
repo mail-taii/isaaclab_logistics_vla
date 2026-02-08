@@ -15,7 +15,7 @@ class Spawn_ss_st_stack_CommandsCfg:
     order_info = Spawn_ss_st_stack_CommandTermCfg(
         asset_name=ASSET_NAME,
         body_name=BODY_NAME,
-        objects=['cracker_box', 'sugar_box', 'tomato_soup_can'],
+        objects=['cracker_box', 'sugar_box', 'plastic_package', 'sf_big', 'sf_small'],  # 仅方盒类物品
         source_boxes=['s_box_1', 's_box_2', 's_box_3'],  # 3个原料箱，随机选一个
         target_boxes=['t_box_1', 't_box_2', 't_box_3'],
         num_active_skus=3,
