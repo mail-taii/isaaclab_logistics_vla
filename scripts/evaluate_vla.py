@@ -10,11 +10,10 @@ parser.add_argument(
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--policy", type=str, default='random', help="Name of the policy.")
-parser.add_argument("--device", type=str, default='cuda:0')
 # 新增：FROM_JSON 参数，0: 生成JSON, 1: 消费JSON, 2: 独立随机(默认)
 parser.add_argument("--from_json", type=int, default=0, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
-parser.add_argument("--asset_root_path",type=str,default="/home/wst/model_files/benchmark")
+parser.add_argument("--asset_root_path",type=str,default="/home/junzhe/isaaclab_logistics_vla/isaaclab_logistics_vla/assets")
 parser.add_argument("--task_scene_name",type=str,default="Spawn_ds_st_sparse_EnvCfg")
 parser.add_argument(
     "--robot_id", type=str, default="realman_dual_left_arm",

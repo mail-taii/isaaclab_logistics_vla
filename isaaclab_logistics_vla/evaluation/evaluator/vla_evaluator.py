@@ -84,6 +84,7 @@ class VLA_Evaluator:
         record_video: bool = True,
         video_output_dir: str = "./videos",
         robot_id: str = "realman_dual_left_arm",
+        from_json: int = 0,
     ):
         """
         Args:
@@ -94,6 +95,7 @@ class VLA_Evaluator:
             video_output_dir: 视频输出目录
             robot_id: 评估侧机器人 ID，用于从 robot_registry 取 arm_dof / 平台关节 / Curobo 配置等。
                 见 evaluation/robot_registry.py，新机器人需在 REGISTRY 中注册。
+            from_json: 0=记录 JSON，1=回放 JSON，2=纯随机（与 scripts/evaluate_vla.py --from_json 对应）。
         """
         self.env = VLAIsaacEnv(cfg=env_cfg)
         # 说明：场景中的机器人由 env_cfg.scene 加载（OrderSceneCfg → register.load_robot('realman_franka_ee')），
@@ -109,7 +111,8 @@ class VLA_Evaluator:
         else:
             self.policy = policy
         self.isprint = False
-        
+        self.from_json = from_json  # 0: 记录 JSON, 1: 回放 JSON, 2: 纯随机
+
         # Observation Builder
         self._obs_builder = ObservationBuilder(self.env)
         self._obs_require = ObservationRequire(

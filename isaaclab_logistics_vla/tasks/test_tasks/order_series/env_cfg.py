@@ -40,6 +40,7 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
     pass
 
+@register.add_env_configs('OrderEnvCfg')
 @configclass
 class OrderEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment. robot_id 决定场景中的机器人与相机绑定。"""
