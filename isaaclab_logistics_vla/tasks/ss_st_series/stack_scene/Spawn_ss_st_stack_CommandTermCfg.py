@@ -13,7 +13,6 @@ from .Spawn_ss_st_stack_CommandTerm import Spawn_ss_st_stack_CommandTerm
 class Spawn_ss_st_stack_CommandTermCfg(OrderCommandTermCfg):
     class_type: type = Spawn_ss_st_stack_CommandTerm
 
-    num_active_skus: int = 3              # 本局选几种 SKU
-    max_instances_per_sku: int = 2        # 每种 SKU 最多选几个
-    max_stack_height: int = 4             # 单摞最大物品数量
-    distractor_mode: str = "stack"        # 干扰物模式: "stack" | "scatter"
+    max_active_skus: int = 5              # 最多选几种 SKU（实际由 assign 随机确定）
+    max_stacks: int = 4                   # 最多几摞
+    max_per_stack: int = 4                # 每摞最多放几个
