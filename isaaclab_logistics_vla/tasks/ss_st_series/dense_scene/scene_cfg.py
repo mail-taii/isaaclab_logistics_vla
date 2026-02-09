@@ -13,15 +13,7 @@ from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
-# SKU 定义: (usd_path, count, scale)，仅方盒类物品
 SKU_DEFINITIONS = {
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/scene_cfg.py
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'], 4, 0.6),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'], 4, 0.6),
-    "plastic_package": (PLASTIC_PACKAGE_PARAMS['USD_PATH'], 4, 0.4),
-    "sf_big": (SFBIG_PARAMS['USD_PATH'], 4, 0.3),
-    "sf_small": (SFSMALL_PARAMS['USD_PATH'], 4, 0.3),
-=======
     "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],6),
     "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],6),
     "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],6),
@@ -29,46 +21,24 @@ SKU_DEFINITIONS = {
     "SF_small": (SF_SMALL_PARAMS['USD_PATH'],6),
     "empty_plastic_package": (EMPTY_PLASTIC_PACKAGE_PARAMS['USD_PATH'],6),
     "SF_big": (SF_BIG_PARAMS['USD_PATH'],6),
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/scene_cfg.py
 }
 
 
 @configclass
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/scene_cfg.py
-class Spawn_ss_st_stack_SceneCfg(BaseOrderSceneCfg):
-=======
 class Spawn_ss_st_dense_SceneCfg(BaseOrderSceneCfg):
     
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/scene_cfg.py
     robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
-    robot.init_state.pos = (0.96781, 2.28535, 0.216)
-    robot.init_state.rot = (1, 0, 0, 0)
+    robot.init_state.pos  = (0.96781,2.28535,0.216)
+    robot.init_state.rot = (1,0,0,0)
 
-    replicate_physics = False
+    replicate_physics=False
 
     ee_frame: FrameTransformerCfg = register.load_eeframe_configs('realman_franka_ee_eeframe')()
 
-
-# 动态注入 SKU 实例
-for sku_name, (usd_path, count, scale) in SKU_DEFINITIONS.items():
+for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
     for i in range(count):
+        # 实例名: cracker_box_0, cracker_box_1 ...
         instance_name = f"{sku_name}_{i}"
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/scene_cfg.py
-
-        obj_cfg = RigidObjectCfg(
-            prim_path=f"{{ENV_REGEX_NS}}/{instance_name}",
-            spawn=UsdFileCfg(
-                usd_path=usd_path,
-                scale=(scale, scale, scale),
-                rigid_props=schemas.RigidBodyPropertiesCfg(
-                    sleep_threshold=0.05
-                ),
-            ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(1158019, 133614, 0), rot=(1, 0, 0, 0)),
-        )
-
-        setattr(Spawn_ss_st_stack_SceneCfg, instance_name, obj_cfg)
-=======
         
         if sku_name == "cracker_box" or sku_name == "sugar_box" or sku_name == "tomato_soup_can":
             # 定义 Config
@@ -115,4 +85,3 @@ for i in range(6):
         init_state=RigidObjectCfg.InitialStateCfg(pos=(1158019, 1158019, 0),rot=(1, 0, 0, 0)),
     )
     setattr(Spawn_ss_st_dense_SceneCfg, f"tray_{i}", tray_cfg)
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/scene_cfg.py

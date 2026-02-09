@@ -9,7 +9,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from isaaclab_logistics_vla.tasks.ds_st_series.Assign_ds_st_CommandTerm import AssignDSSTCommandTerm
+from isaaclab_logistics_vla.tasks.ms_st_series.Assign_ms_st_CommandTerm import AssignDSSTCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
 
-class Spawn_ds_st_sparse_CommandTerm(AssignDSSTCommandTerm):
+class Spawn_ms_st_sparse_CommandTerm(AssignDSSTCommandTerm):
     
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
