@@ -4,7 +4,7 @@ from isaaclab.utils import configclass
 from isaaclab_logistics_vla.tasks import mdp
 
 @configclass
-class Spawn_ms_st_sparse_RewardCfg:
+class Spawn_ds_st_sparse_RewardCfg:
     """Reward terms for the task."""
     
     # 1. 订单完成率奖励
