@@ -15,7 +15,7 @@ class UR5eCameraConfig:
         prim_path="{ENV_REGEX_NS}/Robot/base_link/head_camera",
         offset=CameraCfg.OffsetCfg(
             pos=(0.0, -0.2, 0.4),
-            rot=euler_to_quat_isaac(r=-135, p=0, y=180),
+            rot=euler_to_quat_isaac(r=-135, p=0, y=180, return_tensor=False),
         ),
         spawn=PinholeCameraCfg(
             focal_length=24.0,
@@ -25,7 +25,7 @@ class UR5eCameraConfig:
         ),
         width=640,
         height=480,
-        data_types=["rgb", "distance_to_image_plane", "instance_segmentation_fast"],
+        data_types=["rgb"],
     )
 
     # 末端相机：挂在 wrist_3_link（UrdfConverter 可能合并 fixed joint，tool0 未必单独存在）
@@ -33,7 +33,7 @@ class UR5eCameraConfig:
         prim_path="{ENV_REGEX_NS}/Robot/wrist_3_link/ee_camera",
         offset=CameraCfg.OffsetCfg(
             pos=(0.0, 0.0, 0.05),
-            rot=euler_to_quat_isaac(r=90, p=0, y=0),
+            rot=euler_to_quat_isaac(r=90, p=0, y=0, return_tensor=False),
         ),
         spawn=PinholeCameraCfg(
             focal_length=24.0,
@@ -43,7 +43,7 @@ class UR5eCameraConfig:
         ),
         width=640,
         height=480,
-        data_types=["rgb", "distance_to_image_plane", "instance_segmentation_fast"],
+        data_types=["rgb"],
     )
 
     # 顶视相机：世界系固定
@@ -51,7 +51,7 @@ class UR5eCameraConfig:
         prim_path="{ENV_REGEX_NS}/top_camera",
         offset=CameraCfg.OffsetCfg(
             pos=(1.0, 2.0, 4.0),
-            rot=euler_to_quat_isaac(r=0, p=180, y=0),
+            rot=euler_to_quat_isaac(r=0, p=180, y=0, return_tensor=False),
         ),
         spawn=PinholeCameraCfg(
             focal_length=24.0,
@@ -61,5 +61,5 @@ class UR5eCameraConfig:
         ),
         width=1024,
         height=768,
-        data_types=["rgb", "distance_to_image_plane", "instance_segmentation_fast"],
+        data_types=["rgb"],
     )

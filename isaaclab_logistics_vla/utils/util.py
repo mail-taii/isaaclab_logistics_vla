@@ -33,13 +33,15 @@ def camera_rot_look_along_parent_z():
     return (0.0, 1.0, 0.0, 0.0)
 
 
-def euler_to_quat_isaac(r, p, y, return_tensor=False):
+def euler_to_quat_isaac(r, p, y, return_tensor=True):
     """
     输入: r, p, y  角度制
     输出: (w, x, y, z) 格式的四元数
-    
+
     参数:
-        return_tensor: 是否返回 PyTorch 张量，默认为 False（返回普通元组）
+        return_tensor: 是否返回 PyTorch 张量，默认为 True。
+            - True: 返回 shape=(4,) 的 torch.Tensor，适合后续 repeat / 拼接等张量运算。
+            - False: 返回 Python 元组 (w, x, y, z)，适合 CameraCfg 等仅需常量的场景。
     """
     # 检查是否所有输入都是标量
     all_scalars = not isinstance(r, torch.Tensor) and not isinstance(p, torch.Tensor) and not isinstance(y, torch.Tensor)
