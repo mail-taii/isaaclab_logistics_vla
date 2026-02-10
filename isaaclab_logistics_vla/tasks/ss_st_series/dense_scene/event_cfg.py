@@ -15,11 +15,7 @@ import torch
 
 
 @configclass
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/event_cfg.py
-class Spawn_ss_st_stack_EventCfg:
-=======
 class Spawn_ss_st_dense_EventCfg:
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/event_cfg.py
     """Configuration for events."""
 
     reset_all = EventTermCfg(func=mdp.reset_scene_to_default, mode="reset")
@@ -35,22 +31,18 @@ class Spawn_ss_st_dense_EventCfg:
     )
 
     randomize_box_texture = EventTermCfg(
-        func=mdp.randomize_unified_visual_texture,
+        func=mdp.randomize_unified_visual_texture, # 调用该函数
         mode="reset",
         params={
+            # 1. 指定要改谁
             "target_asset_names": ["s_box_1", "s_box_2", "s_box_3"],
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/event_cfg.py
-=======
             # 2. 指定纹理图片池
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/event_cfg.py
             "texture_paths": [
                 f"{ASSET_ROOT_PATH}/texture/1.png",
                 f"{ASSET_ROOT_PATH}/texture/2.png",
             ],
         }
     )
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/event_cfg.py
-=======
 
     setup_trays = EventTermCfg(
         func=lambda env, env_ids: mdp.update_tray_positions(
@@ -76,4 +68,3 @@ class Spawn_ss_st_dense_EventCfg:
         },
     )
 
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/event_cfg.py

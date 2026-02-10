@@ -16,79 +16,49 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/env_cfg.py
-from .scene_cfg import Spawn_ss_st_stack_SceneCfg
+from .scene_cfg import Spawn_ms_st_sparse_SceneCfg
 from .observation_cfg import ObservationsCfg
-from .command_cfg import Spawn_ss_st_stack_CommandsCfg
-from .reward_cfg import Spawn_ss_st_stack_RewardCfg
-from .event_cfg import Spawn_ss_st_stack_EventCfg
-=======
-from .scene_cfg import Spawn_ss_st_dense_SceneCfg
-from .observation_cfg import ObservationsCfg
-from .command_cfg import Spawn_ss_st_dense_CommandsCfg
-from .reward_cfg import Spawn_ss_st_dense_RewardCfg
-from .event_cfg import Spawn_ss_st_dense_EventCfg
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/env_cfg.py
+from .command_cfg import Spawn_ms_st_sparse_CommandsCfg
+from .reward_cfg import Spawn_ms_st_sparse_RewardCfg
+from .event_cfg import Spawn_ms_st_sparse_EventCfg
 
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks import mdp
-
 
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
+    # 保留超时重置：这是必须的，否则环境永远不停
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
     order_success = DoneTerm(
         func=mdp.check_order_completion,
         params={
-            "command_name": "order_info",
-            "threshold": 0.999,
+            "command_name": "order_info", 
+            "threshold": 0.999, 
         },
     )
-
 
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
     pass
 
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/env_cfg.py
-
-@register.add_env_configs('Spawn_ss_st_stack_EnvCfg')
+@register.add_env_configs('Spawn_ms_st_sparse_EnvCfg')
 @configclass
-class Spawn_ss_st_stack_EnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the stack scene environment."""
-
-    # Scene settings
-    scene: Spawn_ss_st_stack_SceneCfg = Spawn_ss_st_stack_SceneCfg(num_envs=4, env_spacing=7.0)
-
-    # Basic settings
-    observations: ObservationsCfg = ObservationsCfg()
-    actions = register.load_action_configs('realman_franka_ee_actionscfg')()
-    commands: Spawn_ss_st_stack_CommandsCfg = Spawn_ss_st_stack_CommandsCfg()
-
-    # MDP settings
-    rewards: Spawn_ss_st_stack_RewardCfg = Spawn_ss_st_stack_RewardCfg()
-    terminations: TerminationsCfg = TerminationsCfg()
-    events: Spawn_ss_st_stack_EventCfg = Spawn_ss_st_stack_EventCfg()
-=======
-@register.add_env_configs('Spawn_ss_st_dense_EnvCfg')
-@configclass
-class Spawn_ss_st_dense_EnvCfg(ManagerBasedRLEnvCfg):
+class Spawn_ms_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment."""
     # Scene settings
-    scene: Spawn_ss_st_dense_SceneCfg = Spawn_ss_st_dense_SceneCfg(num_envs=4,env_spacing = 7.0)
+    scene: Spawn_ms_st_sparse_SceneCfg = Spawn_ms_st_sparse_SceneCfg(num_envs=4,env_spacing = 7.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
-    commands: Spawn_ss_st_dense_CommandsCfg = Spawn_ss_st_dense_CommandsCfg()
+    commands: Spawn_ms_st_sparse_CommandsCfg = Spawn_ms_st_sparse_CommandsCfg()
     # MDP settings
-    rewards: Spawn_ss_st_dense_RewardCfg = Spawn_ss_st_dense_RewardCfg()
+    rewards: Spawn_ms_st_sparse_RewardCfg = Spawn_ms_st_sparse_RewardCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-    events: Spawn_ss_st_dense_EventCfg = Spawn_ss_st_dense_EventCfg()
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/env_cfg.py
+    events: Spawn_ms_st_sparse_EventCfg = Spawn_ms_st_sparse_EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
