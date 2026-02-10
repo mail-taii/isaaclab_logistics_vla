@@ -48,7 +48,7 @@ for sku_name, (usd_path, count, scale) in SKU_DEFINITIONS.items():
                     sleep_threshold=0.05
                 ),
             ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(1158019, 133614, 0), rot=(1, 0, 0, 0)),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0), rot=(1, 0, 0, 0)),
         )
 
         setattr(Spawn_ss_st_stack_SceneCfg, instance_name, obj_cfg)
