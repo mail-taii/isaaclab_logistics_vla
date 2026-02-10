@@ -44,6 +44,9 @@ import isaaclab_tasks
 import isaaclab_logistics_vla
 from isaaclab_tasks.utils import parse_env_cfg
 
+#from isaaclab_logistics_vla.tasks.test_tasks.dual_arm_pick_and_place_series.env_cfg import DualArmPickAndPlaceEnvCfg 
+#from isaaclab_logistics_vla.tasks.test_tasks.order_series.env_cfg import OrderEnvCfg # 我要把这里换成我的任务
+from isaaclab_logistics_vla.tasks.ss_st_series.stack_scene.env_cfg import Spawn_ss_st_stack_EnvCfg
 from isaaclab_logistics_vla.evaluation.evaluator.vla_evaluator import VLA_Evaluator
 
 from isaaclab_logistics_vla.utils.register import register
