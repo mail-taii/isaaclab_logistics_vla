@@ -30,7 +30,8 @@ CRACKER_BOX_PARAMS = {
     'Y_LENGTH':0.20,
     'Z_LENGTH':0.06,
     'SPARSE_ORIENT':(0,90,0),   #相对于箱子的坐标
-    "DENSE_ORIENT":[(0,90,0),(0,0,0)]
+    "DENSE_ORIENT":[(0,90,0),(0,0,0)],
+    'STACK_ORIENT':(0,0,0)         # Z最小，默认朝向即可
 }
 
 SUGER_BOX_PARAMS = {
@@ -39,7 +40,8 @@ SUGER_BOX_PARAMS = {
     'Y_LENGTH':0.17,
     'Z_LENGTH':0.04,
     'SPARSE_ORIENT':(0,90,0),
-    "DENSE_ORIENT":[(0,90,0),(0,0,0)]
+    "DENSE_ORIENT":[(0,90,0),(0,0,0)],
+    'STACK_ORIENT':(0,0,0)         # Z最小，默认朝向即可
 }
 
 TOMATO_SOUP_CAN_PARAMS = {
@@ -49,7 +51,8 @@ TOMATO_SOUP_CAN_PARAMS = {
     'Y_LENGTH':0.10,
     'Z_LENGTH':0.07,
     'SPARSE_ORIENT':(90,0,0),
-    "DENSE_ORIENT":[(90,0,0),(0,0,0)]
+    "DENSE_ORIENT":[(90,0,0),(0,0,0)],
+     'STACK_ORIENT':(0,0,0)         # X=Z 等大，默认朝向即可
 }
 
 
@@ -92,4 +95,31 @@ SF_BIG_PARAMS = {
     'Y_LENGTH':0.15,
     'SPARSE_ORIENT':(90,0,0), # (0,0,0)
     "DENSE_ORIENT":[(90,0,0),(0,0,0)]
+}
+
+PLASTIC_PACKAGE_PARAMS = {
+    'USD_PATH':f"{ASSET_ROOT_PATH}/props/Collected_plastic_package/plastic_package.usdc",
+    'X_LENGTH':0.34,
+    'Y_LENGTH':0.39,
+    'Z_LENGTH':0.07,
+    'SPARSE_ORIENT':(0,0,0),
+    'STACK_ORIENT':(0,0,0)         # Z最小，默认朝向即可
+}
+
+SFBIG_PARAMS = {
+    'USD_PATH':f"{ASSET_ROOT_PATH}/props/Collected_SFBig/SFBig.usdc",
+    'X_LENGTH':0.13,
+    'Y_LENGTH':0.47,
+    'Z_LENGTH':0.35,
+    'SPARSE_ORIENT':(0,0,0),
+    'STACK_ORIENT':(90,0,90)
+}
+
+SFSMALL_PARAMS = {
+    'USD_PATH':f"{ASSET_ROOT_PATH}/props/Collected_SFSmall/SFSmall.usdc",
+    'X_LENGTH':0.35,
+    'Y_LENGTH':0.43,
+    'Z_LENGTH':0.08,
+    'SPARSE_ORIENT':(0,0,0),
+    'STACK_ORIENT':(0,0,0)         # Z最小，默认朝向即可
 }

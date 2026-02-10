@@ -5,14 +5,6 @@ from isaaclab.utils import configclass
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.utils.constant import ASSET_ROOT_PATH
-from isaaclab_logistics_vla.utils.object_position import set_asset_relative_position
-
-from isaaclab_logistics_vla.utils.object_position import *
-from isaaclab_logistics_vla.utils.constant import *
-from isaaclab_logistics_vla.utils.util import *
-
-import torch
-
 
 @configclass
 class Spawn_ss_st_stack_EventCfg:
@@ -25,7 +17,9 @@ class Spawn_ss_st_stack_EventCfg:
         mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]), 
+
             "position_range": (0.0, 0.0),
+            
             "velocity_range": (0.0, 0.0),
         },
     )
