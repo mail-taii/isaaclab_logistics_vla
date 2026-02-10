@@ -16,19 +16,11 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/env_cfg.py
 from .scene_cfg import Spawn_ss_st_stack_SceneCfg
 from .observation_cfg import ObservationsCfg
 from .command_cfg import Spawn_ss_st_stack_CommandsCfg
 from .reward_cfg import Spawn_ss_st_stack_RewardCfg
 from .event_cfg import Spawn_ss_st_stack_EventCfg
-=======
-from .scene_cfg import Spawn_ss_st_dense_SceneCfg
-from .observation_cfg import ObservationsCfg
-from .command_cfg import Spawn_ss_st_dense_CommandsCfg
-from .reward_cfg import Spawn_ss_st_dense_RewardCfg
-from .event_cfg import Spawn_ss_st_dense_EventCfg
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/env_cfg.py
 
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks import mdp
@@ -54,7 +46,6 @@ class CurriculumCfg:
     """Curriculum terms for the MDP."""
     pass
 
-<<<<<<< HEAD:isaaclab_logistics_vla/tasks/ss_st_series/stack_scene/env_cfg.py
 
 @register.add_env_configs('Spawn_ss_st_stack_EnvCfg')
 @configclass
@@ -73,22 +64,6 @@ class Spawn_ss_st_stack_EnvCfg(ManagerBasedRLEnvCfg):
     rewards: Spawn_ss_st_stack_RewardCfg = Spawn_ss_st_stack_RewardCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: Spawn_ss_st_stack_EventCfg = Spawn_ss_st_stack_EventCfg()
-=======
-@register.add_env_configs('Spawn_ss_st_dense_EnvCfg')
-@configclass
-class Spawn_ss_st_dense_EnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the lifting environment."""
-    # Scene settings
-    scene: Spawn_ss_st_dense_SceneCfg = Spawn_ss_st_dense_SceneCfg(num_envs=4,env_spacing = 7.0)
-    # Basic settings
-    observations: ObservationsCfg = ObservationsCfg()
-    actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
-    commands: Spawn_ss_st_dense_CommandsCfg = Spawn_ss_st_dense_CommandsCfg()
-    # MDP settings
-    rewards: Spawn_ss_st_dense_RewardCfg = Spawn_ss_st_dense_RewardCfg()
-    terminations: TerminationsCfg = TerminationsCfg()
-    events: Spawn_ss_st_dense_EventCfg = Spawn_ss_st_dense_EventCfg()
->>>>>>> 7bca851 (dense_scene_ss-st v0.1):isaaclab_logistics_vla/tasks/ss_st_series/dense_scene/env_cfg.py
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):

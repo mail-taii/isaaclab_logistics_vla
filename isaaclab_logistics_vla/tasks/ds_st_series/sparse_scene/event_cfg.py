@@ -7,7 +7,7 @@ from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.utils.constant import ASSET_ROOT_PATH
 
 @configclass
-class Spawn_ms_st_sparse_EventCfg:
+class Spawn_ds_st_sparse_EventCfg:
     """Configuration for events."""
 
     reset_all = EventTermCfg(func=mdp.reset_scene_to_default, mode="reset")
