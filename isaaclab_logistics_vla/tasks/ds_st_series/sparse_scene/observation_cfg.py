@@ -1,10 +1,9 @@
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 from isaaclab_logistics_vla.tasks import mdp
-
+from isaaclab_logistics_vla.utils.register import register
 
 @configclass
 class ObservationsCfg:
@@ -24,25 +23,3 @@ class ObservationsCfg:
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
-
-    @configclass
-    class CamerasCfg(ObsGroup):
-        """相机图像观测组：供 VLA 等使用。传感器在 scene_cfg 中定义，按 robot_id 动态取 camera_configs。"""
-
-        head_rgb = ObsTerm(
-            func=mdp.image,
-            params={"sensor_cfg": SceneEntityCfg("head_camera"), "data_type": "rgb", "normalize": False},
-        )
-        ee_rgb = ObsTerm(
-            func=mdp.image,
-            params={"sensor_cfg": SceneEntityCfg("ee_camera"), "data_type": "rgb", "normalize": False},
-        )
-        top_rgb = ObsTerm(
-            func=mdp.image,
-            params={"sensor_cfg": SceneEntityCfg("top_camera"), "data_type": "rgb", "normalize": False},
-        )
-
-        def __post_init__(self):
-            self.concatenate_terms = False
-
-    cameras: CamerasCfg = CamerasCfg()
