@@ -27,8 +27,8 @@ _SKU_PARAMS_MAP = {
     "cracker": CRACKER_BOX_PARAMS,
     "sugar": SUGER_BOX_PARAMS,
     "plastic_package": PLASTIC_PACKAGE_PARAMS,
-    "sf_big": SFBIG_PARAMS,
-    "sf_small": SFSMALL_PARAMS,
+    "sf_big": SF_BIG_PARAMS,
+    "sf_small": SF_SMALL_PARAMS,
 }
 
 
