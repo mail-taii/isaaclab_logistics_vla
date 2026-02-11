@@ -15,7 +15,6 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransf
 from isaaclab_logistics_vla import ISAACLAB_LOGISTICS_VLA_EXT_DIR
 from isaaclab_logistics_vla.utils.register import register
 
-# UR5e 资源路径；需先运行 scripts/convert_ur5e_urdf_to_usd.py 生成 ur5e.usd
 UR5E_ASSET_DIR = os.path.join(
     ISAACLAB_LOGISTICS_VLA_EXT_DIR,
     "isaaclab_logistics_vla",
