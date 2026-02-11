@@ -18,8 +18,8 @@ SKU_DEFINITIONS = {
     "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'], 4, 0.6),
     "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'], 4, 0.6),
     "plastic_package": (PLASTIC_PACKAGE_PARAMS['USD_PATH'], 4, 0.4),
-    "sf_big": (SFBIG_PARAMS['USD_PATH'], 4, 0.3),
-    "sf_small": (SFSMALL_PARAMS['USD_PATH'], 4, 0.3),
+    "sf_big": (SF_BIG_PARAMS['USD_PATH'], 4, 0.3),
+    "sf_small": (SF_SMALL_PARAMS['USD_PATH'], 4, 0.3),
 }
 
 
