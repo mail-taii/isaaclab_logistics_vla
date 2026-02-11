@@ -24,6 +24,7 @@ class Registration():
         for loader, modname, ispkg in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
             # 动态加载模块
             mod = importlib.import_module(modname)
+            print(modname)
     
     def add_task(self, task_name):
         def wrap(cls):
