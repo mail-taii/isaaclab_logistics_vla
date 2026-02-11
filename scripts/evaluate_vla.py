@@ -3,20 +3,27 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="VLA-benchmark for Isaac Lab environments.")
+AppLauncher.add_app_launcher_args(parser)
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--policy", type=str, default='random', help="Name of the policy.")
-parser.add_argument("--device", type=str, default='cuda:0')
 # 新增：FROM_JSON 参数，0: 生成JSON, 1: 消费JSON, 2: 独立随机(默认)
 parser.add_argument("--from_json", type=int, default=2, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
-parser.add_argument("--asset_root_path",type=str,default="/home/wst/model_files/benchmark")
-parser.add_argument("--task_scene_name",type=str,default="Spawn_ss_st_dense_EnvCfg")
+parser.add_argument("--asset_root_path",type=str,default="/home/junzhe/Benchmark")
+parser.add_argument("--task_scene_name",type=str,default="Spawn_ds_st_sparse_EnvCfg")
+parser.add_argument(
+    "--robot_id", type=str, default="realman_dual_left_arm",
+    help="评估侧机器人 ID，对应 evaluation/robot_registry.py 中的注册键。新机器人需在 REGISTRY 中注册。",
+)
 
 args_cli, _ = parser.parse_known_args()
+
+# VLA 评估依赖相机观测，必须启用相机渲染
+args_cli.enable_cameras = True
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -57,9 +64,10 @@ def main():
 
     # 初始化评估器并运行
     evaluator = VLA_Evaluator(
-        env_cfg=env_cfg, 
-        policy=args_cli.policy, 
-        from_json=args_cli.from_json
+        env_cfg=env_cfg,
+        policy=args_cli.policy,
+        from_json=args_cli.from_json,
+        robot_id=args_cli.robot_id,
     )
     evaluator.run_evaluation()
 

@@ -1,0 +1,122 @@
+# Curobo 左臂 IK 用配置，路径在 vla_evaluator 中按本包根目录动态填写
+robot_cfg:
+  kinematics:
+    use_usd_kinematics: false
+    urdf_path: PLACEHOLDER_URDF
+    asset_root_path: PLACEHOLDER_ASSET_ROOT
+    base_link: dual_rm_75b_description_platform_base_link
+    ee_link: l_link7
+    collision_spheres: spheres/realman_left_arm.yml
+    collision_sphere_buffer: 0.004
+    collision_link_names:
+    - dual_rm_75b_description_platform_base_link
+    - dual_rm_75b_description_l_link1
+    - dual_rm_75b_description_l_link2
+    - dual_rm_75b_description_l_link3
+    - dual_rm_75b_description_l_link4
+    - dual_rm_75b_description_l_link5
+    - dual_rm_75b_description_l_link6
+    - l_link7
+    - panda_left_hand
+    mesh_link_names:
+    - dual_rm_75b_description_platform_base_link
+    - dual_rm_75b_description_l_link1
+    - dual_rm_75b_description_l_link2
+    - dual_rm_75b_description_l_link3
+    - dual_rm_75b_description_l_link4
+    - dual_rm_75b_description_l_link5
+    - dual_rm_75b_description_l_link6
+    - l_link7
+    - panda_left_hand
+    self_collision_ignore:
+      dual_rm_75b_description_platform_base_link:
+      - dual_rm_75b_description_l_link1
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link3
+      dual_rm_75b_description_l_link1:
+      - dual_rm_75b_description_platform_base_link
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link4
+      dual_rm_75b_description_l_link2:
+      - dual_rm_75b_description_platform_base_link
+      - dual_rm_75b_description_l_link1
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      dual_rm_75b_description_l_link3:
+      - dual_rm_75b_description_l_link1
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      dual_rm_75b_description_l_link4:
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      - l_link7
+      dual_rm_75b_description_l_link5:
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link6
+      - l_link7
+      - panda_left_hand
+      dual_rm_75b_description_l_link6:
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      - l_link7
+      - panda_left_hand
+      l_link7:
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      - panda_left_hand
+      panda_left_hand:
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      - l_link7
+    self_collision_buffer:
+      dual_rm_75b_description_platform_base_link: 0.1
+      dual_rm_75b_description_l_link1: 0.05
+      dual_rm_75b_description_l_link2: 0.05
+      dual_rm_75b_description_l_link3: 0.05
+      dual_rm_75b_description_l_link4: 0.05
+      dual_rm_75b_description_l_link5: 0.05
+      dual_rm_75b_description_l_link6: 0.05
+      l_link7: 0.05
+      panda_left_hand: 0.02
+    cspace:
+      joint_names:
+      - l_joint1
+      - l_joint2
+      - l_joint3
+      - l_joint4
+      - l_joint5
+      - l_joint6
+      - l_joint7
+      retract_config:
+      - 3.1
+      - 0.3
+      - 0.8
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      null_space_weight:
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      cspace_distance_weight:
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      max_acceleration: 15.0
+      max_jerk: 500.0

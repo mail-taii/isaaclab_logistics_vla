@@ -1,0 +1,166 @@
+collision_spheres:
+  dual_rm_75b_description_platform_base_link:
+  # 基座链接的球体需要向上偏移并减小半径，避免与地面碰撞
+  - center:
+    - 0.0
+    - 0.0
+    - 0.1  # 向上偏移，避免与地面碰撞
+    radius: 0.03  # 减小半径，参考 franka 配置
+  - center:
+    - 0.1
+    - 0.0
+    - 0.1  # 向上偏移
+    radius: 0.03  # 减小半径
+  - center:
+    - -0.1
+    - 0.0
+    - 0.1  # 向上偏移
+    radius: 0.03  # 减小半径
+  dual_rm_75b_description_l_link1:
+  - center:
+    - 0.0
+    - 0.0
+    - -0.15000000000000002
+    radius: 0.06
+  - center:
+    - 0.0
+    - 0.0
+    - -0.05
+    radius: 0.06
+  - center:
+    - 0.0
+    - 0.0
+    - 0.05
+    radius: 0.06
+  dual_rm_75b_description_l_link2:
+  - center:
+    - 0.0
+    - 0.0
+    - -0.15000000000000002
+    radius: 0.06
+  - center:
+    - 0.0
+    - 0.0
+    - -0.05
+    radius: 0.06
+  - center:
+    - 0.0
+    - 0.0
+    - 0.05
+    radius: 0.06
+  dual_rm_75b_description_l_link3:
+  - center:
+    - 0.0
+    - 0.0
+    - -0.15000000000000002
+    radius: 0.06
+  - center:
+    - 0.0
+    - 0.0
+    - -0.05
+    radius: 0.06
+  - center:
+    - 0.0
+    - 0.0
+    - 0.05
+    radius: 0.06
+  dual_rm_75b_description_l_link4:
+  - center:
+    - 0.0
+    - 0.0
+    - -0.2
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - -0.1
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.0
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.1
+    radius: 0.05
+  dual_rm_75b_description_l_link5:
+  - center:
+    - 0.0
+    - 0.0
+    - -0.2
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - -0.1
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.0
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.1
+    radius: 0.05
+  dual_rm_75b_description_l_link6:
+  - center:
+    - 0.0
+    - 0.0
+    - -0.2
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - -0.1
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.0
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.1
+    radius: 0.05
+  l_link7:
+  - center:
+    - 0.0
+    - 0.0
+    - -0.2
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - -0.1
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.0
+    radius: 0.05
+  - center:
+    - 0.0
+    - 0.0
+    - 0.1
+    radius: 0.05
+  panda_left_hand:
+  - center:
+    - 0.0
+    - 0.0
+    - 0.0
+    radius: 0.04
+  - center:
+    - 0.05
+    - 0.0
+    - 0.0
+    radius: 0.04
+  - center:
+    - -0.05
+    - 0.0
+    - 0.0
+    radius: 0.04
