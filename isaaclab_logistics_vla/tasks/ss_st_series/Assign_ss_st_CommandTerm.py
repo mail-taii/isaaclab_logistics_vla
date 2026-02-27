@@ -14,10 +14,10 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
 
-from isaaclab_logistics_vla.tasks.OrderCommandTerm import OrderCommandTerm
+from isaaclab_logistics_vla.tasks.STOrderCommandTerm import STOrderCommandTerm
 
 
-class AssignSSSTCommandTerm(OrderCommandTerm):
+class AssignSSSTCommandTerm(STOrderCommandTerm):
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
 
