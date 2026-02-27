@@ -51,7 +51,7 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
                         sleep_threshold=0.05
                     ),
                 ),
-                init_state=RigidObjectCfg.InitialStateCfg(pos=(1158019, 133614, 0),rot=(1, 0, 0, 0)),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0),rot=(1, 0, 0, 0)),
             )
         else:
         #if sku_name == "CN_big" | sku_name == "SF_small" | sku_name == "empty_plastic_package" | sku_name == "SF_big":
@@ -64,7 +64,7 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
                         sleep_threshold=0.05
                     ),
                 ),
-                init_state=RigidObjectCfg.InitialStateCfg(pos=(1158019, 133614, 0),rot=(1, 0, 0, 0)),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0),rot=(1, 0, 0, 0)),
             )
         
         # [关键] 动态注入到 MySceneCfg 类中
@@ -77,11 +77,12 @@ for i in range(6):
         prim_path=f"{{ENV_REGEX_NS}}/tray_{i}",
         spawn=UsdFileCfg(
             usd_path=f"{ASSET_ROOT_PATH}/env/Collected_Blue_Tray/SM_Crate_A08_Blue_01.usd",
-            scale=(0.3*0.018, 0.35*0.018, 0.4*0.018),
+            scale=(0.3, 0.35, 0.4),
+            mass_props=schemas.MassPropertiesCfg(mass=1.0),
             rigid_props=schemas.RigidBodyPropertiesCfg(
                 sleep_threshold=0.2
             ),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1158019, 1158019, 0),rot=(1, 0, 0, 0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(30, 30, 0),rot=(1, 0, 0, 0)),
     )
     setattr(Spawn_ss_st_dense_SceneCfg, f"tray_{i}", tray_cfg)
