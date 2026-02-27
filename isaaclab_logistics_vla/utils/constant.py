@@ -74,6 +74,7 @@ SF_SMALL_PARAMS = {
     'Y_LENGTH':0.43,
     'Z_LENGTH':0.08,
     'SPARSE_ORIENT':(0,0,0),#or (0,0,0)
+    'STACK_ORIENT':(0,0,0),
     "DENSE_ORIENT":[(0,0,0)]
 }
 
@@ -94,6 +95,7 @@ SF_BIG_PARAMS = {
     'Z_LENGTH':0.34,
     'Y_LENGTH':0.15,
     'SPARSE_ORIENT':(90,0,0), # (0,0,0)
+    'STACK_ORIENT':(90,0,90),
     "DENSE_ORIENT":[(90,0,0),(0,0,0)]
 }
 
@@ -102,24 +104,6 @@ PLASTIC_PACKAGE_PARAMS = {
     'X_LENGTH':0.34,
     'Y_LENGTH':0.39,
     'Z_LENGTH':0.07,
-    'SPARSE_ORIENT':(0,0,0),
-    'STACK_ORIENT':(0,0,0)         # Z最小，默认朝向即可
-}
-
-SFBIG_PARAMS = {
-    'USD_PATH':f"{ASSET_ROOT_PATH}/props/Collected_SFBig/SFBig.usdc",
-    'X_LENGTH':0.13,
-    'Y_LENGTH':0.47,
-    'Z_LENGTH':0.35,
-    'SPARSE_ORIENT':(0,0,0),
-    'STACK_ORIENT':(90,0,90)
-}
-
-SFSMALL_PARAMS = {
-    'USD_PATH':f"{ASSET_ROOT_PATH}/props/Collected_SFSmall/SFSmall.usdc",
-    'X_LENGTH':0.35,
-    'Y_LENGTH':0.43,
-    'Z_LENGTH':0.08,
     'SPARSE_ORIENT':(0,0,0),
     'STACK_ORIENT':(0,0,0)         # Z最小，默认朝向即可
 }
