@@ -5,6 +5,8 @@ import uuid
 import os
 from PIL import Image, ImageDraw, ImageFont
 
+from isaaclab_logistics_vla.utils.object_position import set_asset_relative_position
+
 ASSET_ROOT_PATH = os.getenv("ASSET_ROOT_PATH", "")
 
 def randomize_unified_visual_texture(

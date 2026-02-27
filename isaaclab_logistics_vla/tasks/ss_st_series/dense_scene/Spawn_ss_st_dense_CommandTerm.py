@@ -78,8 +78,10 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
             else: p = CRACKER_BOX_PARAMS 
 
             raw_dims = torch.tensor([p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH']], device=self.device)
-            if any(s in obj_name for s in SCALED_OBJECTS1): raw_dims *= SCALE_FACTOR1
-            elif any(s in obj_name for s in SCALED_OBJECTS2): raw_dims *= SCALE_FACTOR2
+            if any(s in obj_name for s in SCALED_OBJECTS1): 
+                raw_dims *= SCALE_FACTOR1
+            elif any(s in obj_name for s in SCALED_OBJECTS2): 
+                raw_dims *= SCALE_FACTOR2
             
             if force_ori is not None:
                 # 情况 A: 强制使用传入的朝向 (保持一致性)
