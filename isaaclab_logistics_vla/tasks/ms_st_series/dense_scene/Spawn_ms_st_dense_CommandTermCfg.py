@@ -7,14 +7,16 @@ from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, G
 from isaaclab.utils import configclass
 
 from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
-from .Spawn_ss_st_dense_CommandTerm import Spawn_ss_st_dense_CommandTerm
+from .Spawn_ms_st_dense_CommandTerm import Spawn_ms_st_dense_CommandTerm
 
 @configclass
-class Spawn_ss_st_dense_CommandTermCfg(OrderCommandTermCfg):
-    class_type:type = Spawn_ss_st_dense_CommandTerm
+class Spawn_ms_st_dense_CommandTermCfg(OrderCommandTermCfg):
+    class_type:type = Spawn_ms_st_dense_CommandTerm
 
     num_active_skus: int = 3         # 本局选几种 SKU
-    max_instances_per_sku: int = 6  # 每种 SKU max选几个
+    max_instances_per_sku: int = 6  # 每种 SKU 选几个
 
     # Dense Scene 特有：物体对应的子容器 ID 1/2分别对应两个子容器（托盘/非托盘），-1 表示不分配
-    tray_or_not: list[bool] = [1,0,0] # 是否是托盘场景（影响目标分配逻辑）
+    tray_or_not: list[bool] = [1,1,0] # 是否是托盘场景（影响目标分配逻辑）
+
+    num_source_box: int = 3        # 本局生成几个原料箱

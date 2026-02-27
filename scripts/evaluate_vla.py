@@ -13,8 +13,8 @@ parser.add_argument("--device", type=str, default='cuda:0')
 # 新增：FROM_JSON 参数，0: 生成JSON, 1: 消费JSON, 2: 独立随机(默认)
 parser.add_argument("--from_json", type=int, default=2, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
-parser.add_argument("--asset_root_path",type=str,default="/home/junzhe/code/model/Benchmark")
-parser.add_argument("--task_scene_name",type=str,default="Spawn_ss_st_stack_EnvCfg")
+parser.add_argument("--asset_root_path",type=str,default="/home/daniel/fff/model_files/benchmark")
+parser.add_argument("--task_scene_name",type=str,default="Spawn_ms_st_dense_EnvCfg")
 
 args_cli, _ = parser.parse_known_args()
 
@@ -45,7 +45,7 @@ register.auto_scan("isaaclab_logistics_vla.tasks")
 
 def main():
     # --- 修改点 3: 使用 register 加载配置 ---
-    # 动态从命令行参数加载，默认会加载 Spawn_ss_st_sparse_with_obstacles_EnvCfg
+    # 动态从命令行参数加载，默认会加载 Spawn_ms_st_dense_EnvCfg
     print(f"正在加载任务配置: {args_cli.task_scene_name}")
     env_cfg = register.load_env_configs(f'{args_cli.task_scene_name}')()
     

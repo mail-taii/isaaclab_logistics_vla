@@ -55,8 +55,8 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
         tray_config = getattr(self.cfg, "tray_or_not", [0, 0, 0])
         is_tray_scene = tray_config[0]
 
-        BOX_X_LEN = 0.36
-        BOX_Y_LEN = 0.56
+        BOX_X_LEN = WORK_BOX_PARAMS['X_LENGTH']
+        BOX_Y_LEN = WORK_BOX_PARAMS['Y_LENGTH']
         TRAY_X_LEN = 0.30
         TRAY_Y_LEN = 0.23
         resolution = 0.005
