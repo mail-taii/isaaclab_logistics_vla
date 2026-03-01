@@ -21,146 +21,185 @@ collision_spheres:
     - 0.0
     - 0.0
     - -0.15000000000000002
-    radius: 0.06
+    radius: 0.05
   - center:
     - 0.0
     - 0.0
     - -0.05
-    radius: 0.06
+    radius: 0.05
   - center:
     - 0.0
     - 0.0
     - 0.05
-    radius: 0.06
+    radius: 0.05
   dual_rm_75b_description_l_link2:
   - center:
     - 0.0
     - 0.0
     - -0.15000000000000002
-    radius: 0.06
+    radius: 0.05
   - center:
     - 0.0
     - 0.0
     - -0.05
-    radius: 0.06
+    radius: 0.05
   - center:
     - 0.0
     - 0.0
     - 0.05
-    radius: 0.06
+    radius: 0.05
   dual_rm_75b_description_l_link3:
   - center:
     - 0.0
     - 0.0
     - -0.15000000000000002
-    radius: 0.06
+    radius: 0.05
   - center:
     - 0.0
     - 0.0
     - -0.05
-    radius: 0.06
+    radius: 0.05
   - center:
     - 0.0
     - 0.0
     - 0.05
-    radius: 0.06
+    radius: 0.05
   dual_rm_75b_description_l_link4:
   - center:
     - 0.0
     - 0.0
     - -0.2
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - -0.1
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.0
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.1
-    radius: 0.05
+    radius: 0.04
   dual_rm_75b_description_l_link5:
   - center:
     - 0.0
     - 0.0
     - -0.2
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - -0.1
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.0
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.1
-    radius: 0.05
+    radius: 0.04
   dual_rm_75b_description_l_link6:
   - center:
     - 0.0
     - 0.0
     - -0.2
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - -0.1
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.0
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.1
-    radius: 0.05
+    radius: 0.04
   l_link7:
   - center:
     - 0.0
     - 0.0
     - -0.2
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - -0.1
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.0
-    radius: 0.05
+    radius: 0.04
   - center:
     - 0.0
     - 0.0
     - 0.1
-    radius: 0.05
+    radius: 0.04
   panda_left_hand:
+  # 手掌：中心 + 左右 + 前向，确保夹爪主体被覆盖
   - center:
     - 0.0
     - 0.0
     - 0.0
-    radius: 0.04
+    radius: 0.03
   - center:
     - 0.05
     - 0.0
     - 0.0
-    radius: 0.04
+    radius: 0.03
   - center:
     - -0.05
     - 0.0
     - 0.0
-    radius: 0.04
+    radius: 0.03
+  - center:
+    - 0.0
+    - 0.0
+    - 0.04
+    radius: 0.025
+  # 左右指：夹爪最容易穿模的部分，必须显式定义
+  panda_left_leftfinger:
+  - center:
+    - 0.0
+    - 0.0
+    - 0.0
+    radius: 0.015
+  - center:
+    - 0.0
+    - 0.02
+    - 0.0
+    radius: 0.012
+  - center:
+    - 0.0
+    - 0.04
+    - 0.0
+    radius: 0.012
+  panda_left_rightfinger:
+  - center:
+    - 0.0
+    - 0.0
+    - 0.0
+    radius: 0.015
+  - center:
+    - 0.0
+    - -0.02
+    - 0.0
+    radius: 0.012
+  - center:
+    - 0.0
+    - -0.04
+    - 0.0
+    radius: 0.012

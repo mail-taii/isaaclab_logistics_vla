@@ -26,8 +26,9 @@ SKU_DEFINITIONS = {
 class Spawn_ss_st_sparse_SceneCfg(BaseOrderSceneCfg):
     """Sparse scene 任务场景：机器人 + 三路相机（head/ee/top）+ 动态 SKU 物体。"""
     robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
-    robot.init_state.pos  = (0.96781,2.28535,0.216)
+    robot.init_state.pos  = (0.96781,2.0,0.216)
     robot.init_state.rot = (1,0,0,0)
+    robot.init_state.joint_pos = {**robot.init_state.joint_pos, "platform_joint": 0.65}  # 仅 sparse 任务：臂基 0.216+0.65=0.866m
 
     replicate_physics=False
 

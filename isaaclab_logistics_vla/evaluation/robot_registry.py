@@ -21,6 +21,11 @@ class RobotEvalConfig:
     platform_joint_name: Optional[str] = None
     """可动平台关节名，若有则用于臂基高度变换；无则 None。"""
 
+    arm_base_offset_in_root: Optional[Tuple[float, float, float]] = None
+    """机器人根 link 到臂基（CuRobo base_link，如 platform_base_link）的平移，在根 link 坐标系下 (x, y, z)。
+    臂基位置 = root_pos + R_root @ (offset + [0, 0, platform_joint_value])。
+    来自 URDF 中 platform_joint 的 origin；若无平台则仅为 (x,y,z)。"""
+
     # Curobo IK（EE 模式用）
     curobo_yml_name: Optional[str] = None
     """configs/robot_configs/ 下的 Curobo 左臂/单臂 yml 文件名，如 realman_left_arm.yml。None 表示不初始化 IK。"""
@@ -30,6 +35,9 @@ class RobotEvalConfig:
 
     curobo_urdf_name: Optional[str] = None
     """Curobo 使用的 URDF 文件名，如 realman_no_wheel.urdf。"""
+
+    left_arm_joint_names: Optional[Tuple[str, ...]] = None
+    """左臂关节名列表，用于从 full qpos 提取/填回；None 时用 qpos[:, :arm_dof]。"""
 
     unnorm_key: Optional[str] = None
     """OpenVLA 等策略用的 dataset_statistics key，与机器人动作维度/归一化对应；None 时策略用默认（如 bridge_orig）。"""
@@ -56,6 +64,8 @@ REGISTRY: dict[str, RobotEvalConfig] = {
         robot_id="realman_dual_left_arm",
         arm_dof=7,
         platform_joint_name="platform_joint",
+        arm_base_offset_in_root=(0.0, -0.11663, 0.271),  # URDF platform_joint origin
+        left_arm_joint_names=("l_joint1", "l_joint2", "l_joint3", "l_joint4", "l_joint5", "l_joint6", "l_joint7"),
         curobo_yml_name="realman_left_arm.yml",
         curobo_asset_folder="realman",
         curobo_urdf_name="realman_no_wheel.urdf",

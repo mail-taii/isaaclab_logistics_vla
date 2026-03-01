@@ -125,7 +125,17 @@ class ObservationBuilder:
         # 目前 IsaacLab 默认没有直接的加速度观测，这里先填 0，后续如有需要可在 env 中补充 term
         qacc = torch.zeros_like(qpos)
 
-        return RobotState(qpos=qpos, qvel=qvel, qacc=qacc)
+        out: RobotState = RobotState(qpos=qpos, qvel=qvel, qacc=qacc)
+        # 根 link 世界系位姿（供 Curobo 等由 root + arm_base_offset 推算臂基）
+        try:
+            scene = getattr(env, "scene", None)
+            robot = scene["robot"] if scene is not None else None
+            if robot is not None and hasattr(robot, "data") and hasattr(robot.data, "root_pos_w"):
+                out["root_pos_w"] = robot.data.root_pos_w[:, :3]
+                out["root_quat_w"] = robot.data.root_quat_w
+        except Exception:
+            pass
+        return out
 
     # --------------------------------------------------------------------- #
     # 视觉观测：rgb / depth / seg + intrinsic
@@ -205,8 +215,19 @@ class ObservationBuilder:
                     if isinstance(rgb_data, dict):
                         log.debug("rgb_data 字典键: %s", list(rgb_data.keys()))
 
-            if require.require_depth and hasattr(data, "distance_to_image_plane"):
-                depth_list.append(data.distance_to_image_plane)  # (num_envs, H, W)
+            # depth：兼容 IsaacLab 里两种常见接口形式：
+            # - data.distance_to_image_plane
+            # - data.output["distance_to_image_plane"]
+            if require.require_depth:
+                depth_data = None
+                if hasattr(data, "distance_to_image_plane"):
+                    depth_data = data.distance_to_image_plane
+                elif hasattr(data, "output") and isinstance(getattr(data, "output"), dict):
+                    out_dict = getattr(data, "output")
+                    if "distance_to_image_plane" in out_dict:
+                        depth_data = out_dict["distance_to_image_plane"]
+                if depth_data is not None:
+                    depth_list.append(depth_data)  # (num_envs, H, W)
 
             if require.require_seg and hasattr(data, "instance_segmentation"):
                 seg_list.append(data.instance_segmentation)  # (num_envs, H, W)
@@ -250,6 +271,42 @@ class ObservationBuilder:
             log.debug("RGB 列表为空，无法构建 vision['rgb']")
             
         if depth_list:
+            # 深度：不同相机分辨率时做一次对齐，逻辑类似 RGB
+            shapes = [tensor.shape for tensor in depth_list]
+            log.debug("所有相机 Depth 形状: %s", shapes)
+
+            # 先把可能的末尾通道维 (num_envs, H, W, 1) 压成 (num_envs, H, W)
+            normalized_depth_list = []
+            for tensor in depth_list:
+                if tensor.ndim == 4 and tensor.shape[-1] == 1:
+                    tensor = tensor[..., 0]  # (num_envs, H, W)
+                normalized_depth_list.append(tensor)
+
+            depth_list = normalized_depth_list
+            shapes = [tensor.shape for tensor in depth_list]
+
+            if len(set(shapes)) > 1:
+                log.debug("相机 Depth 尺寸不一致，进行尺寸调整")
+                target_shape = shapes[0]
+
+                import torch.nn.functional as F
+                resized_list = []
+                for i, tensor in enumerate(depth_list):
+                    if tensor.shape != target_shape:
+                        # 期望形状: (num_envs, H, W)
+                        num_envs, h_t, w_t = tensor.shape
+                        _, h, w = target_shape
+                        current_tensor = tensor.unsqueeze(1).float()  # (num_envs, 1, H, W)
+                        resized_tensor = F.interpolate(
+                            current_tensor, size=(h, w), mode="bilinear", align_corners=False
+                        )
+                        resized_tensor = resized_tensor.squeeze(1)  # (num_envs, H, W)
+                        resized_list.append(resized_tensor)
+                        log.debug("相机 %s Depth 从 %s 调整为 %s", i, (num_envs, h_t, w_t), resized_tensor.shape)
+                    else:
+                        resized_list.append(tensor)
+                depth_list = resized_list
+
             vision["depth"] = torch.stack(depth_list, dim=0)
         if seg_list:
             vision["segmentation"] = torch.stack(seg_list, dim=0)

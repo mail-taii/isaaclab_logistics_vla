@@ -24,14 +24,19 @@ class MetaInfo(TypedDict, total=False):
     units: Dict[str, str]
 
 
-class RobotState(TypedDict):
-    """机器人状态观测。"""
-
-    # 关节位置 / 速度 / 加速度，均为 tensor，shape = (num_envs, num_joints)
+class _RobotStateRequired(TypedDict):
     qpos: torch.Tensor
     qvel: torch.Tensor
-    # qacc 可以全 0 或真实加速度，由环境侧决定；缺失时可以不填（由 builder 补）
     qacc: torch.Tensor
+
+
+class RobotState(_RobotStateRequired, total=False):
+    """机器人状态观测。qpos/qvel/qacc 必填；root 位姿可选（用于 Curobo 臂基推算）。"""
+
+    # qacc 可以全 0 或真实加速度，由环境侧决定；缺失时由 builder 补 0
+    # 根 link 世界系位姿（用于 Curobo 等由 root + arm_base_offset 推算臂基时）
+    root_pos_w: torch.Tensor  # (num_envs, 3)
+    root_quat_w: torch.Tensor  # (num_envs, 4) w,x,y,z
 
 
 class VisionData(TypedDict, total=False):

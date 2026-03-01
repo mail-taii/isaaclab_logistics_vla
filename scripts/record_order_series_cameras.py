@@ -53,9 +53,22 @@ def _summarize_observation(obs):
             mpc = pcd["masked_point_cloud"]
             import torch
 
+            # 兼容不同版本 PyTorch：有的提供 torch.is_nested_tensor，有的在 torch.nested 里
+            is_nested = False
+            try:
+                if hasattr(torch, "is_nested_tensor"):
+                    is_nested = torch.is_nested_tensor(mpc)
+                else:
+                    from torch import nested
+
+                    if hasattr(nested, "is_nested_tensor"):
+                        is_nested = nested.is_nested_tensor(mpc)
+            except Exception:
+                is_nested = False
+
             p_sum["masked_point_cloud"] = {
                 "type": type(mpc).__name__,
-                "is_nested": torch.is_nested_tensor(mpc),
+                "is_nested": is_nested,
             }
         if "frame" in pcd:
             p_sum["frame"] = pcd["frame"]
@@ -138,8 +151,22 @@ def main():
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--out_dir", type=str, default="./camera_videos")
     parser.add_argument(
-        "--robot_id", type=str, default="realman_dual_left_arm",
-        help="机器人 ID，与 evaluate_vla.py 一致；决定场景中的机器人与相机（get_order_scene_cfg(robot_id)）。",
+        "--task_scene_name",
+        type=str,
+        default="Spawn_ss_st_sparse_EnvCfg",
+        help="任务场景配置类名，与 evaluate_vla.py 的 --task_scene_name 一致，例如 Spawn_ss_st_sparse_EnvCfg。",
+    )
+    parser.add_argument(
+        "--robot_id",
+        type=str,
+        default="realman_dual_left_arm",
+        help="（可选）机器人 ID，主要用于日志标识；场景由 task_scene_name 决定。",
+    )
+    parser.add_argument(
+        "--asset_root_path",
+        type=str,
+        default="/home/junzhe/Benchmark",
+        help="资产根路径，与 evaluate_vla.py 一致，用于在 USD 配置中解析 /env/xxx.usd 等相对路径。",
     )
     # 这里保留 headless/enable_cameras 参数，是为了和 AppLauncher 接口对齐
     parser.add_argument("--headless", action="store_true", default=False)
@@ -147,6 +174,14 @@ def main():
     args_cli, _ = parser.parse_known_args()
     if args_cli.seconds is not None:
         args_cli.steps = max(1, int(round(args_cli.fps * args_cli.seconds)))
+
+    # 资产根路径：与 evaluate_vla.py 一致，确保 scene 中的 usd_path 能正确解析
+    if not os.path.exists(args_cli.asset_root_path):
+        print(f"资产路径 {args_cli.asset_root_path} 未配置！请检查 --asset_root_path")
+        raise SystemExit(1)
+    else:
+        print(f"Asset Root Path: {args_cli.asset_root_path}")
+        os.environ["ASSET_ROOT_PATH"] = args_cli.asset_root_path
 
     # 录制依赖相机渲染，必须启用相机（与 evaluate_vla.py 一致）
     args_cli.enable_cameras = True
@@ -158,10 +193,11 @@ def main():
     import torch
     import imageio
 
-    from isaaclab_logistics_vla.tasks.test_tasks.order_series.env_cfg import OrderEnvCfg
-    from isaaclab_logistics_vla.tasks.test_tasks.order_series.observation_cfg import (
-        ObservationsCfg,
-    )
+    # 与 evaluate_vla.py 一致：通过 register.load_env_configs 按 task_scene_name 加载任务场景
+    import isaaclab_tasks  # noqa: F401
+    import isaaclab_logistics_vla  # noqa: F401
+    from isaaclab_logistics_vla.utils.register import register
+    register.auto_scan("isaaclab_logistics_vla.tasks")
     from isaaclab_logistics_vla.evaluation.evaluator.VLAIsaacEnv import VLAIsaacEnv
     from isaaclab_logistics_vla.evaluation.observation.builder import (
         EpisodeContext,
@@ -169,14 +205,14 @@ def main():
     )
     from isaaclab_logistics_vla.evaluation.observation.schema import ObservationRequire
 
-    # 与 evaluate_vla.py 一致：按 robot_id 构建 env_cfg，scene 由 get_order_scene_cfg(robot_id) 提供（机器人 + 三路相机）
-    env_cfg = OrderEnvCfg(robot_id=args_cli.robot_id)
+    print(f"[INFO] 正在加载任务配置: {args_cli.task_scene_name}")
+    env_cfg = register.load_env_configs(args_cli.task_scene_name)()
+    # 单环境录制，多任务对齐 evaluate_vla 的 device 用法
+    if hasattr(env_cfg, "scene") and hasattr(env_cfg.scene, "num_envs"):
+        env_cfg.scene.num_envs = 1
     env_cfg.sim.device = args_cli.device
-    # 挂上 observation 配置，方便 ObservationBuilder 从 observation_manager 里拿到关节信息
-    env_cfg.observations = ObservationsCfg()
-    # 这里我们已经在 env_cfg 里把 num_envs 固定为 1
 
-    print(f"[INFO] 使用 robot_id={args_cli.robot_id!r}，场景与相机来自 get_order_scene_cfg(robot_id)")
+    print(f"[INFO] 使用 task_scene_name={args_cli.task_scene_name!r}, robot_id={args_cli.robot_id!r}")
 
     env = VLAIsaacEnv(cfg=env_cfg)
     env.reset()

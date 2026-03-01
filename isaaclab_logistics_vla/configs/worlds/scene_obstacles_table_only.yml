@@ -1,0 +1,18 @@
+# Curobo EE 模式 MotionGen 专用：仅包含桌子障碍物，其他物体（箱子等）不作为障碍物
+# pose [x,y,z,qw,qx,qy,qz] 为臂基系，dims [lx,ly,lz] 单位米
+# 桌子与 base_scene_cfg 中 e_table 对应：pos=(0.9, 3.5, 0), scale=0.8
+# 臂基 sparse_scene: (0.96781, 1.98337, 1.137) → 桌子中心局部 (-0.07, 1.52, -0.76)
+cuboids:
+- name: table
+  pose:
+  - -0.07
+  - 1.52
+  - -0.76
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0
+  dims:
+  - 1.2
+  - 2.0
+  - 0.75

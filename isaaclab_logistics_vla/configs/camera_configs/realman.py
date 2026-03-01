@@ -25,7 +25,7 @@ class RealmanCameraConfig:
         ),
         width=640,
         height=480,
-        data_types=["rgb"],
+        data_types=["rgb", "distance_to_image_plane"],
     )
 
     # 末端相机：挂在 panda_left_hand，视线与末端 +Z（TCP 指向）一致
@@ -43,7 +43,7 @@ class RealmanCameraConfig:
         ),
         width=640,
         height=480,
-        data_types=["rgb"],
+        data_types=["rgb", "distance_to_image_plane"],
     )
 
     # 顶视相机：固定在世界系上方，俯视整个工作区
@@ -61,5 +61,5 @@ class RealmanCameraConfig:
         ),
         width=1024,
         height=768,
-        data_types=["rgb"],
+        data_types=["rgb", "distance_to_image_plane"],
     )

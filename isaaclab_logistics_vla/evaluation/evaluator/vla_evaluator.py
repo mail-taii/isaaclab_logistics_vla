@@ -6,6 +6,7 @@ VLA 评估驱动：只负责创建环境、循环 step、收集/打印指标。
 """
 
 from .VLAIsaacEnv import VLAIsaacEnv
+import os
 import torch
 import numpy as np
 import time
@@ -15,16 +16,16 @@ from pathlib import Path
 from isaaclab.utils.math import subtract_frame_transforms, combine_frame_transforms
 from isaaclab_logistics_vla.evaluation.observation.builder import EpisodeContext, ObservationBuilder
 from isaaclab_logistics_vla.evaluation.observation.schema import ObservationRequire
-from isaaclab_logistics_vla.evaluation.result.saver import ResultSaver, EpisodeReport
 from isaaclab_logistics_vla.evaluation.robot_registry import get_robot_eval_config
-# Curobo 逆运动学求解器（配置从本包 configs/robot_configs/ 加载，不依赖 Curobo 安装路径）
-from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-from curobo.types.math import Pose
-from curobo.types.robot import JointState, RobotConfig
-from curobo.types.base import TensorDeviceType
-from curobo.util_file import load_yaml
+# Curobo MotionGen 规划器（EE 模式用，配置从本包 configs/robot_configs/ 加载）
+from curobo.wrap.reacher.motion_gen import MotionGenPlanConfig
 
 import isaaclab_logistics_vla
+from isaaclab_logistics_vla.evaluation.curobo.planner import (
+    WorldMode,
+    build_motion_gen,
+    plan_single_ee_motion,
+)
 
 
 def _get_action_from_policy(policy, obs):
@@ -70,6 +71,35 @@ def _make_policy_from_name(
         from isaaclab_logistics_vla.evaluation.models.policy.trajectory_playback_policy import TrajectoryPlaybackPolicy
         path = trajectory_path or "/home/wst/code/ompl/RRT_path.txt"
         return TrajectoryPlaybackPolicy(txt_path=path, device=device, action_dim=action_dim, lift_duration=250)
+    if policy_name in ("curobo_reach_box", "reach_box"):
+        # 使用 Curobo 规划左臂到前方箱子中点的简单 demo 策略
+        from isaaclab_logistics_vla.evaluation.models.policy.curobo_reach_box_policy import (
+            CuroboReachBoxPolicy,
+        )
+
+        if robot_eval_cfg is None:
+            from isaaclab_logistics_vla.evaluation.robot_registry import get_robot_eval_config
+
+            robot_eval_cfg = get_robot_eval_config("realman_dual_left_arm")
+        platform_joint_index = None
+        try:
+            scene = getattr(env.unwrapped, "scene", None)
+            robot = scene["robot"] if scene is not None else None
+            if (
+                robot is not None
+                and hasattr(robot, "data")
+                and hasattr(robot.data, "joint_names")
+                and getattr(robot_eval_cfg, "platform_joint_name", None)
+            ):
+                platform_joint_index = list(robot.data.joint_names).index(robot_eval_cfg.platform_joint_name)
+        except (ValueError, AttributeError):
+            pass
+        return CuroboReachBoxPolicy(
+            action_dim=action_dim,
+            device=device,
+            robot_eval_cfg=robot_eval_cfg,
+            platform_joint_index=platform_joint_index,
+        )
     raise ValueError(f"Unknown policy name: {policy_name!r}. Use 'random', 'rrt', or 'trajectory'.")
 
 
@@ -131,50 +161,58 @@ class VLA_Evaluator:
         self.video_output_dir = Path(video_output_dir)
         self.video_output_dir.mkdir(parents=True, exist_ok=True)
         self.video_initialized = False
-        
-        # ResultSaver 初始化
-        self.result_saver = ResultSaver(output_dir="./results")
 
-    
-        self.ik_solver = None
-        self._retract_config_list = None
+        self._motion_gen = None
         self.arm_dof = self._robot_eval_cfg.arm_dof
 
-        if self._robot_eval_cfg.curobo_yml_name and self._robot_eval_cfg.curobo_asset_folder and self._robot_eval_cfg.curobo_urdf_name:
+        if (
+            self._robot_eval_cfg.curobo_yml_name
+            and self._robot_eval_cfg.curobo_asset_folder
+            and self._robot_eval_cfg.curobo_urdf_name
+        ):
             try:
-                print(f"🔄 初始化 Curobo IK Solver (robot_id={robot_id})...")
-                tensor_args = TensorDeviceType(device=self.env.device)
-                _pkg_dir = Path(isaaclab_logistics_vla.__file__).resolve().parent
-                _robot_configs_dir = _pkg_dir / "configs" / "robot_configs"
-                _robot_yml = _robot_configs_dir / self._robot_eval_cfg.curobo_yml_name
-                config_file = load_yaml(str(_robot_yml))
-                _assets_dir = _pkg_dir / "assets" / "robots" / self._robot_eval_cfg.curobo_asset_folder
-                config_file["robot_cfg"]["kinematics"]["urdf_path"] = str(_assets_dir / self._robot_eval_cfg.curobo_urdf_name)
-                config_file["robot_cfg"]["kinematics"]["asset_root_path"] = str(_assets_dir)
-                config_file["robot_cfg"]["kinematics"]["collision_spheres"] = str(
-                    _robot_configs_dir / "spheres" / self._robot_eval_cfg.curobo_yml_name
+                use_mesh = os.environ.get("CUROBO_USE_MESH_OBSTACLES", "").lower() in ("1", "true", "yes")
+                use_hollow_box = os.environ.get("CUROBO_HOLLOW_BOX", "").lower() in ("1", "true", "yes")
+                if use_mesh and use_hollow_box:
+                    world_mode: WorldMode = "boxes_hollow"
+                    print(
+                        f"🔄 初始化 Curobo MotionGen 规划器 (robot_id={robot_id})，障碍物: 空心箱..."
+                    )
+                elif use_mesh:
+                    world_mode = "boxes_mesh"
+                    print(
+                        f"🔄 初始化 Curobo MotionGen 规划器 (robot_id={robot_id})，障碍物: 箱子(mesh)..."
+                    )
+                else:
+                    world_mode = "table_only"
+                    print(
+                        f"🔄 初始化 Curobo MotionGen 规划器 (robot_id={robot_id})，障碍物: 仅桌子..."
+                    )
+
+                # 与 policy 的 Curobo 使用同一 GPU，避免 retract_config 等张量跨设备
+                _curobo_dev = os.environ.get("CUROBO_DEVICE")
+                if _curobo_dev is not None:
+                    _curobo_dev = (
+                        torch.device(_curobo_dev)
+                        if isinstance(_curobo_dev, str)
+                        else _curobo_dev
+                    )
+                else:
+                    _curobo_dev = self.env.device
+
+                self._motion_gen = build_motion_gen(
+                    self._robot_eval_cfg,
+                    curobo_device=_curobo_dev,
+                    world_mode=world_mode,
+                    logger_name=f"evaluator_curobo_{robot_id}",
                 )
-                robot_cfg = RobotConfig.from_dict(config_file["robot_cfg"], tensor_args)
-                ik_config = IKSolverConfig.load_from_robot_config(
-                    robot_cfg,
-                    None,
-                    rotation_threshold=0.05,
-                    position_threshold=0.01,
-                    num_seeds=32,
-                    self_collision_check=True,
-                    self_collision_opt=True,
-                    tensor_args=tensor_args,
-                    use_cuda_graph=True,
-                )
-                self.ik_solver = IKSolver(ik_config)
-                self._retract_config_list = config_file["robot_cfg"]["kinematics"].get("cspace", {}).get("retract_config")
-                print("✅ Curobo IK Solver 初始化完成")
             except Exception as e:
-                print(f"❌ Curobo 初始化失败: {e}")
-                self.ik_solver = None
-                self._retract_config_list = None
+                print(f"❌ Curobo MotionGen 初始化失败: {e}")
+                self._motion_gen = None
         else:
-            print(f"[INFO] robot_id={robot_id} 未配置 Curobo（curobo_yml_name/asset/urdf 为空），EE 模式不可用。")
+            print(
+                f"[INFO] robot_id={robot_id} 未配置 Curobo（curobo_yml_name/asset/urdf 为空），EE 模式不可用。"
+            )
 
     def _init_video_writers(self, obs_dict):
         """初始化视频写入器"""
@@ -186,6 +224,13 @@ class VLA_Evaluator:
             vision = obs_dict.get("vision", {})
             cameras = vision.get("cameras", [])
             rgb = vision.get("rgb", None)
+
+            if rgb is None or len(cameras) == 0:
+                if not getattr(self, "_video_init_warned", False):
+                    self._video_init_warned = True
+                    reason = "vision 缺失" if not vision else ("cameras 为空" if not cameras else "rgb 为 None")
+                    print(f"⚠️ 视频录制未初始化: {reason} (obs_dict keys={list(obs_dict.keys())}, vision keys={list(vision.keys()) if vision else []})")
+                return
             
             if rgb is not None and len(cameras) > 0:
                 # 获取时间戳
@@ -259,69 +304,15 @@ class VLA_Evaluator:
 
     def close_video_recording(self):
         """关闭视频录制"""
+        if not self.video_writers:
+            if self.record_video and not self.video_initialized:
+                print("🎬 未录制视频（vision/cameras 初始化失败，请查看上方 ⚠️ 提示）")
+            return
         for cam_name, writer in self.video_writers.items():
             if writer is not None:
                 writer.close()
-                print(f"🎬 {cam_name} 视频录制已完成")
+                print(f"🎬 {cam_name} 视频已保存至 {self.video_output_dir}")
         self.video_writers.clear()
-    
-    def _save_evaluation_result(self, start_time, episode_length, info, rew, terminated, truncated, ctx):
-        """
-        保存评估结果
-        
-        Args:
-            start_time: 评估开始时间
-            episode_length: episode 长度
-            info: 环境返回的信息
-            rew: 奖励
-            terminated: 是否正常终止
-            truncated: 是否被截断
-            ctx:  episode 上下文
-        """
-        try:
-            # 计算评估时间
-            eval_time = time.time() - start_time
-            
-            # 构建 metrics_read（这里使用 info 作为示例，实际应从环境读取）
-            metrics_read = info.get("metrics", {})
-            if not metrics_read:
-                # 如果没有 metrics，使用简单的奖励作为示例
-                metrics_read = {"total_reward": float(rew.sum().item())}
-            
-            # 构建 timing 信息
-            timing = {
-                "episode_time": eval_time,
-                "steps_per_second": episode_length / eval_time if eval_time > 0 else 0
-            }
-            
-            # 构建并保存 episode 报告
-            episode_report = EpisodeReport(
-                episode_id=ctx.episode_id,
-                seed=None,  # 可以从 env 中获取
-                success=bool(terminated and not truncated),  # 假设 terminated 表示成功
-                metrics_read=metrics_read,
-                timing=timing,
-                task_name=ctx.task_name,
-                episode_length=episode_length
-            )
-            
-            # 保存 episode 结果
-            self.result_saver.write_episode(episode_report)
-            
-            # 生成并保存任务报告
-            self.result_saver.write_task(task_name=ctx.task_name)
-            
-            print(f"\n📊 评估完成:")
-            print(f"  - Episode 长度: {episode_length} 步")
-            print(f"  - 评估时间: {eval_time:.2f} 秒")
-            print(f"  - 成功率: {'✓' if episode_report.success else '✗'}")
-            print(f"  - 奖励: {metrics_read.get('total_reward', 0):.2f}")
-            print(f"  - 结果已保存到: {self.result_saver.output_dir}")
-            
-        except Exception as e:
-            print(f"❌ 保存评估结果失败: {e}")
-            import traceback
-            traceback.print_exc()
 
     def _convert_actions_by_control_mode(self, actions, obs_dict):
         """
@@ -330,10 +321,10 @@ class VLA_Evaluator:
         control_mode = getattr(self.policy, "control_mode", "joint")
         
         if control_mode == "ee":
-            # EE 模式必须要有 IK，否则报错（静默返回错误动作无意义）
-            if not self.ik_solver:
+            # EE 模式必须要有 MotionGen 规划器，否则报错
+            if not self._motion_gen:
                 raise RuntimeError(
-                    "EE 模式下 Curobo IK 未初始化成功，无法将末端动作转为关节动作。"
+                    "EE 模式下 Curobo MotionGen 未初始化成功，无法将末端动作转为关节动作。"
                     " 请检查 configs/robot_configs/ 与 Curobo 依赖。"
                 )
 
@@ -341,14 +332,26 @@ class VLA_Evaluator:
             robot_state = obs_dict.get("robot_state", {})
             if not robot_state or "qpos" not in robot_state:
                 raise RuntimeError(
-                    "EE 模式下 obs_dict 缺少 robot_state.qpos，无法做 IK。"
+                    "EE 模式下 obs_dict 缺少 robot_state.qpos，无法做 MotionGen 规划。"
                     " 请确保 ObservationBuilder 提供 robot_state。"
                 )
 
             current_qpos = robot_state["qpos"]
-            
-            # 获取/计算 target_ee_pos
             robot_data = self.env.unwrapped.scene.articulations["robot"].data
+
+            # 左臂关节索引：若有 left_arm_joint_names 则从 joint_names 查找，否则用前 arm_dof 个
+            left_arm_indices = None
+            left_names = getattr(self._robot_eval_cfg, "left_arm_joint_names", None)
+            if left_names and hasattr(robot_data, "joint_names"):
+                all_names = list(robot_data.joint_names)
+                try:
+                    left_arm_indices = [all_names.index(n) for n in left_names]
+                except ValueError:
+                    pass
+            if left_arm_indices is None:
+                left_arm_indices = list(range(self.arm_dof))
+
+            # 获取/计算 target_ee_pos
             
             # 获取当前末端位置与姿态（缺一不可，否则 IK 无意义）
             ee_pos = None
@@ -372,17 +375,23 @@ class VLA_Evaluator:
             # Curobo 的 URDF 基座在原点，需把目标位置从 Isaac 世界系变换到臂基座系（含平台高度）
             root_pos_w = robot_data.root_pos_w[:, :3]
             root_quat_w = robot_data.root_quat_w
-            # 若有可移动平台（从注册表取 platform_joint_name），臂基 = root + [0,0,platform_height]（root 系下）
+            # 臂基 = root + R_root @ offset；offset 来自 arm_base_offset_in_root，z 再加上 platform_joint
             arm_base_pos_w = root_pos_w.clone()
+            offset_in_root = torch.zeros(
+                root_pos_w.shape[0], 3,
+                dtype=root_pos_w.dtype, device=root_pos_w.device
+            )
+            arm_offset = getattr(self._robot_eval_cfg, "arm_base_offset_in_root", None)
+            if arm_offset is not None:
+                offset_in_root[:, 0] = arm_offset[0]
+                offset_in_root[:, 1] = arm_offset[1]
+                offset_in_root[:, 2] = arm_offset[2]
             platform_joint_name = getattr(self._robot_eval_cfg, "platform_joint_name", None)
             if platform_joint_name and hasattr(robot_data, "joint_names") and platform_joint_name in robot_data.joint_names:
                 platform_idx = list(robot_data.joint_names).index(platform_joint_name)
                 platform_pos = robot_data.joint_pos[:, platform_idx]  # (num_envs,)
-                offset_in_root = torch.zeros(
-                    platform_pos.shape[0], 3,
-                    dtype=root_pos_w.dtype, device=root_pos_w.device
-                )
-                offset_in_root[:, 2] = platform_pos
+                offset_in_root[:, 2] = offset_in_root[:, 2] + platform_pos
+            if arm_offset is not None or (platform_joint_name and hasattr(robot_data, "joint_names") and platform_joint_name in robot_data.joint_names):
                 arm_base_pos_w, _ = combine_frame_transforms(
                     root_pos_w, root_quat_w, offset_in_root
                 )
@@ -395,106 +404,69 @@ class VLA_Evaluator:
 
             # Debug：打印世界系与基座系下的末端、目标、当前关节角
             _ee_w = ee_pos[0].detach().cpu().numpy()
-            _ee_b = target_ee_pos_b[0].detach().cpu().numpy()
-            _delta = ee_delta[0].detach().cpu().numpy()
             _target_w = target_ee_pos_w[0].detach().cpu().numpy()
             _target_b = target_ee_pos_b[0].detach().cpu().numpy()
+            _delta = ee_delta[0].detach().cpu().numpy()
             _q = current_qpos[0, : self.arm_dof].detach().cpu().numpy()
-            print("[IK] 当前末端位置 世界系 (m):", _ee_w.tolist())
-            print("[IK] 目标末端位置 世界系 (m):", _target_w.tolist())
-            print("[IK] 目标末端位置 基座系 (m):", _target_b.tolist())
-            print("[IK] 策略位移增量 actions[:, :3]:", _delta.tolist())
-            print("[IK] 当前左臂关节角 (rad):", _q.tolist())
+            print("[MotionGen] 当前末端位置 世界系 (m):", _ee_w.tolist())
+            print("[MotionGen] 目标末端位置 世界系 (m):", _target_w.tolist())
+            print("[MotionGen] 目标末端位置 基座系 (m):", _target_b.tolist())
+            print("[MotionGen] 策略位移增量 actions[:, :3]:", _delta.tolist())
+            print("[MotionGen] 当前左臂关节角 (rad):", _q.tolist())
 
             try:
                 with torch.enable_grad():
-                    target_pose = Pose(
-                        target_ee_pos.detach().clone(),
-                        ee_quat_for_pose.detach().clone()
+                    arm_qpos = current_qpos[:, left_arm_indices].detach().clone()
+                    q_start_left = arm_qpos[0]
+
+                    result = plan_single_ee_motion(
+                        self._motion_gen,
+                        q_start=q_start_left,
+                        target_pos_b=target_ee_pos[0],
+                        target_quat_b=ee_quat_for_pose[0],
+                        max_attempts=10,
+                        timeout=2.0,
+                        enable_graph=True,
+                        enable_opt=False,
                     )
 
-                    arm_qpos = current_qpos[:, : self.arm_dof].detach().clone()
-                    degenerate_threshold = 0.01
-                    is_degenerate = (
-                        arm_qpos.shape[1] >= 2
-                        and (arm_qpos[:, 1:].abs() < degenerate_threshold).all().item()
-                    )
-                    # 准备多组 seed，依次尝试以提高收敛率
-                    seeds_to_try = []
-                    if getattr(self, "_retract_config_list", None) is not None:
-                        retract = torch.tensor(
-                            self._retract_config_list,
-                            dtype=arm_qpos.dtype,
-                            device=arm_qpos.device,
-                        ).unsqueeze(0).unsqueeze(1)  # (1, 1, 7)
-                        if target_ee_pos.is_cuda:
-                            retract = retract.to(target_ee_pos.device)
-                        seeds_to_try.append(("retract_config", retract))
-                    if arm_qpos.dim() == 2:
-                        seed_current = arm_qpos.unsqueeze(1)
-                    else:
-                        seed_current = arm_qpos
-                    if target_ee_pos.is_cuda:
-                        seed_current = seed_current.to(target_ee_pos.device)
-                    seeds_to_try.append(("current_qpos", seed_current))
-                    # 零位 seed（7 自由度）
-                    zero_seed = torch.zeros(
-                        1, 1, self.arm_dof,
-                        dtype=arm_qpos.dtype, device=arm_qpos.device
-                    )
-                    if target_ee_pos.is_cuda:
-                        zero_seed = zero_seed.to(target_ee_pos.device)
-                    seeds_to_try.append(("zero", zero_seed))
-
-                    result = None
-                    used_seed_name = None
-                    print(f"[IK] 依次尝试 {len(seeds_to_try)} 组 seed: {[s[0] for s in seeds_to_try]}")
-                    for seed_name, seed_input in seeds_to_try:
-                        print(f"[IK] 尝试 seed={seed_name} ...", end=" ", flush=True)
-                        result = self.ik_solver.solve_single(
-                            target_pose,
-                            seed_config=seed_input,
-                            retract_config=seed_input
-                        )
-                        if result.success.item():
-                            used_seed_name = seed_name
-                            print("收敛")
-                            break
-                        print("未收敛")
-                    if is_degenerate and used_seed_name:
-                        print(f"[IK] 当前关节构型退化，使用 seed={used_seed_name} 收敛")
-
-                    if result is not None and result.success.item():
-                        # 当前环境 Curobo：result.solution 直接为关节解 Tensor（非 JointState.position）
-                        sol_qpos = result.solution.detach()
-                        if sol_qpos.dim() == 3:
-                            sol_qpos = sol_qpos.squeeze(1)
+                    if result.success.item():
+                        # 取规划轨迹的最后一个点（目标关节角）作为本步动作
+                        raw_plan = result.interpolated_plan.position
+                        if raw_plan.dim() == 3:
+                            sol_left = raw_plan[0, -1, :].detach()
+                        else:
+                            sol_left = raw_plan[-1].detach()
                         new_actions = actions.clone()
-                        if new_actions.shape[1] >= self.arm_dof:
-                            new_actions[:, : self.arm_dof] = sol_qpos
-                            return new_actions
+                        for i, idx in enumerate(left_arm_indices):
+                            if idx < new_actions.shape[1]:
+                                new_actions[:, idx] = sol_left[i].to(actions.device)
+                        print("[MotionGen] 规划成功，已应用目标关节角")
+                        return new_actions
                         raise RuntimeError(
-                            f"IK 成功但 action 维度不足: new_actions.shape[1]={new_actions.shape[1]}, arm_dof={self.arm_dof}"
+                            f"MotionGen 成功但 action 维度不足: new_actions.shape[1]={new_actions.shape[1]}, arm_dof={self.arm_dof}"
                         )
 
-                    # 多组 seed 均未收敛：跳过本步，保持当前关节角，继续下一帧
-                    print(f"[IK] 已尝试 {len(seeds_to_try)} 组 seed，均未收敛；跳过本步，保持当前关节角继续下一帧")
+                    # 规划失败：跳过本步，保持当前关节角
+                    print(f"[MotionGen] 规划失败 (status={result.status})，跳过本步，保持当前关节角")
                     new_actions = actions.clone()
-                    new_actions[:, : self.arm_dof] = current_qpos[:, : self.arm_dof]
+                    for i, idx in enumerate(left_arm_indices):
+                        if idx < new_actions.shape[1]:
+                            new_actions[:, idx] = current_qpos[:, idx]
                     return new_actions
 
             except RuntimeError:
                 raise
             except Exception as e:
                 import traceback
-                print(f"[IK] Curobo 求解异常: {e}")
+                print(f"[MotionGen] Curobo 规划异常: {e}")
                 traceback.print_exc()
                 err_detail = (
                     f"当前末端 (m): {_ee_w.tolist()}, 目标 (m): {_target_w.tolist()}, "
                     f"位移增量: {_delta.tolist()}, 当前关节 (rad): {_q.tolist()}"
                 )
                 raise RuntimeError(
-                    f"EE 模式下 Curobo IK 求解异常: {e}\n  {err_detail}"
+                    f"EE 模式下 Curobo MotionGen 规划异常: {e}\n  {err_detail}"
                 ) from e
         
         else:
@@ -507,6 +479,50 @@ class VLA_Evaluator:
         if hasattr(self.policy, "reset"):
             self.policy.reset()
         ctx = EpisodeContext(task_name="order_series", episode_id=0)
+
+        # 相机需要至少一次 step 后才输出首帧，先执行一步零动作以预热
+        if self.record_video and self._camera_names:
+            _zero = torch.zeros(
+                (self.env.num_envs, self.env.unwrapped.action_manager.total_action_dim),
+                device=self.env.device,
+                dtype=torch.float32,
+            )
+            self.env.step(_zero)
+
+        # 诊断 1：Isaac 仿真“绝对真理”——打印真实 Link 高度（root + 推算臂基）
+        try:
+            isaac_env = self.env.unwrapped
+            robot = isaac_env.scene.articulations.get("robot")
+            if robot is not None and hasattr(robot, "data"):
+                root_pos = robot.data.root_pos_w[0, :3].cpu().numpy()
+                root_quat = robot.data.root_quat_w[0].cpu().numpy()
+                offset = getattr(self._robot_eval_cfg, "arm_base_offset_in_root", None)
+                platform_val = 0.0
+                if getattr(self._robot_eval_cfg, "platform_joint_name", None) and hasattr(robot.data, "joint_names"):
+                    names = list(robot.data.joint_names)
+                    if self._robot_eval_cfg.platform_joint_name in names:
+                        idx = names.index(self._robot_eval_cfg.platform_joint_name)
+                        platform_val = float(robot.data.joint_pos[0, idx].cpu().item())
+                if offset is not None:
+                    offset_t = torch.tensor(
+                        [offset[0], offset[1], offset[2] + platform_val],
+                        device=robot.data.root_pos_w.device, dtype=robot.data.root_pos_w.dtype,
+                    ).unsqueeze(0)
+                    arm_base_w, _ = combine_frame_transforms(
+                        robot.data.root_pos_w[0:1, :3],
+                        robot.data.root_quat_w[0:1],
+                        offset_t,
+                    )
+                    arm_base = arm_base_w[0].cpu().numpy()
+                else:
+                    arm_base = root_pos
+                print("\n[诊断] Isaac 仿真真实高度 (env 0):")
+                print(f"  root_pos_w (x,y,z) = {root_pos.tolist()}  → 根高度 z = {root_pos[2]:.4f} m")
+                print(f"  platform_joint = {platform_val:.4f}")
+                print(f"  推算臂基 arm_base_pos_w (x,y,z) = {arm_base.tolist()}  → 臂基高度 z = {arm_base[2]:.4f} m")
+                print("[诊断] 若臂基 z≈1.137 为叠加；若 z≈0.866 或 0.921 则与预期不符。\n")
+        except Exception as e:
+            print(f"[诊断] 打印 Isaac 高度失败: {e}")
 
         try:
             start_time = time.time()
@@ -536,10 +552,17 @@ class VLA_Evaluator:
                 episode_length += 1
 
                 if step_i % 100 == 0:
-                    print(f"  step {step_i}: policy→action→env.step ok, reward={last_rew.item():.4f}")
+                    # last_rew 可能是多环境 Tensor，这里取均值做日志
+                    if isinstance(last_rew, torch.Tensor):
+                        rew_scalar = float(last_rew.mean().item())
+                    else:
+                        rew_scalar = float(last_rew)
+                    print(f"  step {step_i}: policy→action→env.step ok, reward={rew_scalar:.4f}")
 
-                # 检查是否终止
-                if terminated or truncated:
+                # 检查是否终止（terminated/truncated 是 Tensor，需要按 env 维度汇总）
+                term_flag = bool(torch.any(terminated).item()) if isinstance(terminated, torch.Tensor) else bool(terminated)
+                trunc_flag = bool(torch.any(truncated).item()) if isinstance(truncated, torch.Tensor) else bool(truncated)
+                if term_flag or trunc_flag:
                     print(f"\n🎯 Episode 终止: terminated={terminated}, truncated={truncated}")
                     break
                     
@@ -554,13 +577,8 @@ class VLA_Evaluator:
                     print(f"Reward :\n{rew}")
                     print("=" * 50 + "\n")
             
-            # 保存结果
-            self._save_evaluation_result(start_time, episode_length, last_info, last_rew, terminated, truncated, ctx)
-            
         except KeyboardInterrupt:
             print("\n⏹️  评估被用户中断")
-            # 保存中断时的结果
-            self._save_evaluation_result(start_time, episode_length, last_info, last_rew, False, True, ctx)
             # 立即关闭视频录制
             print("🎬 立即关闭视频录制")
             self.close_video_recording()
@@ -568,8 +586,6 @@ class VLA_Evaluator:
             print(f"\n❌ 评估过程中发生错误: {e}")
             import traceback
             traceback.print_exc()
-            # 保存错误时的结果
-            self._save_evaluation_result(start_time, episode_length, last_info, last_rew, False, True, ctx)
             # 立即关闭视频录制
             print("🎬 立即关闭视频录制")
             self.close_video_recording()
