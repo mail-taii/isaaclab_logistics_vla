@@ -1,0 +1,8 @@
+{"timestamp": 1770947606.5962002, "env_id": 0}
+{"timestamp": 1770947606.5962427, "env_id": 1}
+{"timestamp": 1770947606.59625, "env_id": 2}
+{"timestamp": 1770947606.5962555, "env_id": 3}
+{"timestamp": 1770947732.3213089, "env_id": 0, "order_completion_rate": 0.0, "mean_action_time": 0.0, "failure_rate": 0.0, "wrong_pick_rate": 0.0, "wrong_place_rate": 0.0}
+{"timestamp": 1770947732.3213983, "env_id": 1, "order_completion_rate": 0.0, "mean_action_time": 0.0, "failure_rate": 0.0, "wrong_pick_rate": 0.0, "wrong_place_rate": 0.0}
+{"timestamp": 1770947732.3214092, "env_id": 2, "order_completion_rate": 0.0, "mean_action_time": 0.0, "failure_rate": 0.0, "wrong_pick_rate": 0.0, "wrong_place_rate": 0.0}
+{"timestamp": 1770947732.3214204, "env_id": 3, "order_completion_rate": 0.0, "mean_action_time": 0.0, "failure_rate": 0.0, "wrong_pick_rate": 0.0, "wrong_place_rate": 0.0}

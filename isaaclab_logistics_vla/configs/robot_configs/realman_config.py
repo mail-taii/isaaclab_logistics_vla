@@ -41,7 +41,8 @@ class RealmanFrankaEE(ArticulationCfg):
                     "left_left_joint":0.04,
                     "left_right_joint":0.04,
                     "right_right_joint":0.04,
-                    "right_left_joint":0.04}, 
+                    "right_left_joint":0.04,
+                    "platform_joint": 0.8},  # 添加平台关节的初始位置
             pos=(-0.71, 0, 0.216),
             rot= euler2quat('z',-90)    #正对x轴正方向
         )
