@@ -16,4 +16,4 @@ class Spawn_ss_st_stack_CommandTermCfg(OrderCommandTermCfg):
     max_active_skus: int = 5              # 最多选几种目标 SKU（实际由 assign 随机确定）
     max_stacks: int = 4                   # 最多几摞
     max_per_stack: int = 4                # 每摞最多放几个
-    max_redundant: int = 3                # 订单需求之外最多额外生成几个冗余物品（可来自任意 SKU）
+    max_redundant_ratio: float = 0.7      # 每个空槽位被冗余物品填充的最大概率上界（逐槽位伯努利采样）

@@ -45,10 +45,11 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
     6. n 个槽位放摞，随机分配槽位；放置时加入轻微位置抖动和旋转抖动
 
     冗余物品机制：
-    订单需求由 target_need_sku_num 定义。在满足需求之后，会从任意可用 SKU
-    （无论是否在订单中）额外随机生成若干冗余物品混入堆叠。
-    冗余物品与订单物品的区别完全隐式，由 target_need_sku_num（需求量）与
-    is_active_mask（实际生成量）的差值体现，无需额外标记。
+    订单需求由 target_need_sku_num 定义。在满足需求之后，对剩余空槽位
+    逐个进行伯努利采样（概率 p ~ Uniform(0, max_redundant_ratio)），
+    独立决定是否填入冗余物品。冗余数量自然服从 Binomial(remaining, p)，
+    无固定上限，跨 episode 多样性更高。
+    订单物品 vs 冗余物品由 is_order_mask 显式标记。
 
     辅助变量 stack_layout:
         shape = [num_envs, num_sources, max_stacks, max_per_stack]
@@ -69,6 +70,11 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
         self.stack_layout = torch.full(
             (self.num_envs, self.num_sources, max_stacks, max_per_stack),
             -1, dtype=torch.long, device=self.device
+        )
+
+        # 标记哪些物品是订单物品（True）vs 冗余物品（False）
+        self.is_order_mask = torch.zeros(
+            (self.num_envs, self.num_objects), dtype=torch.bool, device=self.device
         )
 
     # ------------------------------------------------------------------ #
@@ -141,14 +147,15 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
         5. 全部物品混合堆叠
         6. 写入 obj_to_source_id / stack_layout / is_active_mask
         """
-        self.target_need_sku_num[env_ids] = 0
+        self.target_need_sku_num[env_ids] = -1
         self.obj_to_source_id[env_ids] = -1
+        self.is_order_mask[env_ids] = False
         self.stack_layout[env_ids] = -1
 
         max_stacks = getattr(self.cfg, 'max_stacks', 4)
         max_per_stack = getattr(self.cfg, 'max_per_stack', 4)
         max_active_skus = getattr(self.cfg, 'max_active_skus', 5)
-        max_redundant = getattr(self.cfg, 'max_redundant', 3)
+        max_redundant_ratio = getattr(self.cfg, 'max_redundant_ratio', 0.7)
 
         for env_id in env_ids:
             env_id_val = env_id.item() if isinstance(env_id, torch.Tensor) else int(env_id)
@@ -221,16 +228,17 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
 
                 for obj_idx in selected_objs:
                     self.obj_to_source_id[env_id_val, obj_idx] = selected_source_box
+                    self.is_order_mask[env_id_val, obj_idx] = True
 
                 sku_obj_groups.append((sku_name, selected_objs))
                 slots_used += demand_counts[i]
 
-            # --- 5. 冗余物品：从任意尚未激活的实例中随机补充 ---
+            # --- 5. 冗余物品：逐槽位伯努利采样，随机填充剩余空位 ---
             remaining_slots = total_capacity - slots_used
-            redundant_budget = min(max_redundant, remaining_slots)
 
-            if redundant_budget > 0:
-                n_redundant = torch.randint(0, redundant_budget + 1, (1,)).item()
+            if remaining_slots > 0:
+                redundant_prob = torch.rand(1, device=self.device).item() * max_redundant_ratio
+                n_redundant = int((torch.rand(remaining_slots, device=self.device) < redundant_prob).sum().item())
 
                 if n_redundant > 0:
                     available_pool = [
@@ -403,8 +411,12 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
 
         权重 = stack_size - position（底层 = stack_size，顶层 = 1）
         stack_weighted_score = Σ(weight × success) / Σ(weight)
+
+        成功判定：object_states 落在目标箱区间 (num_sources, num_sources + num_targets]
         """
         current_states = self.object_states
+        target_state_min = self.num_sources + 1
+        target_state_max = self.num_sources + self.num_targets
 
         weighted_success = torch.zeros(self.num_envs, device=self.device)
         total_weight = torch.zeros(self.num_envs, device=self.device)
@@ -422,13 +434,72 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
                             break
                         weight = float(stack_size - pos)
                         total_weight[env_id] += weight
-                        if current_states[env_id, obj_idx] == 3:
+                        state_val = current_states[env_id, obj_idx].item()
+                        if target_state_min <= state_val <= target_state_max:
                             weighted_success[env_id] += weight
 
         valid = total_weight > 0
         score = torch.zeros_like(weighted_success)
         score[valid] = weighted_success[valid] / total_weight[valid]
         self.metrics["stack_weighted_score"] = score
+
+    # ------------------------------------------------------------------ #
+    #                       总得分计算                                     #
+    # ------------------------------------------------------------------ #
+
+    def compute_total_reward(self, env_ids) -> torch.Tensor:
+        """
+        计算环境完全结束后的总得分（仅统计订单物品）。
+
+        堆叠场景中越底层的物品权重越高：
+            权重 = stack_size - position（底层 = stack_size，顶层 = 1）
+
+        仅当订单物品的 object_states 落在目标箱区间时记为成功得分。
+        冗余物品不参与得分计算。
+
+        Returns:
+            (len(env_ids),) 每个环境的总得分，值域 [0, 1]
+        """
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.tensor(env_ids, device=self.device)
+
+        current_states = self.object_states
+        target_state_min = self.num_sources + 1
+        target_state_max = self.num_sources + self.num_targets
+
+        scores = torch.zeros(len(env_ids), device=self.device)
+
+        for i, env_id in enumerate(env_ids):
+            eid = env_id.item() if isinstance(env_id, torch.Tensor) else int(env_id)
+
+            weighted_success = 0.0
+            total_weight = 0.0
+
+            for src_idx in range(self.num_sources):
+                layout = self.stack_layout[eid, src_idx]
+                for stack_idx in range(layout.shape[0]):
+                    stack_size = (layout[stack_idx] != -1).sum().item()
+                    if stack_size == 0:
+                        continue
+                    for pos in range(stack_size):
+                        obj_idx = layout[stack_idx, pos].item()
+                        if obj_idx == -1:
+                            break
+
+                        if not self.is_order_mask[eid, obj_idx]:
+                            continue
+
+                        weight = float(stack_size - pos)
+                        total_weight += weight
+
+                        state_val = current_states[eid, obj_idx].item()
+                        if target_state_min <= state_val <= target_state_max:
+                            weighted_success += weight
+
+            if total_weight > 0:
+                scores[i] = weighted_success / total_weight
+
+        return scores
 
     # ------------------------------------------------------------------ #
     #                       接口方法                                       #

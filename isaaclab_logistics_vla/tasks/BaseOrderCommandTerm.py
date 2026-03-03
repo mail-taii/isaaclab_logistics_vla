@@ -62,11 +62,7 @@ class BaseOrderCommandTerm(CommandTerm):
         #核心映射
         #每个订单箱中，每种SKU最多需要几个
         self.target_need_sku_num = torch.full(
-<<<<<<< HEAD
-            (self.num_envs,self.num_targets,self.num_skus), 0, dtype=torch.long, device=self.device
-=======
             (self.num_envs,self.num_targets,self.num_skus), -1, dtype=torch.long, device=self.device
->>>>>>> main
         )
 
         #每个订单的状态 每个订单箱中，每种SKU实际上现有几个
