@@ -119,7 +119,8 @@ class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
         4. 目标物 round-robin 均匀分配到各箱
         5. 每个箱子内部按 SKU 贪心填充到多摞，每摞按 base_area 从大到小排序
         """
-        self.obj_to_target_id[env_ids] = -1
+        self.obj_can_to_targets_ids[env_ids] = -1
+        self.target_need_sku_num[env_ids] = 0
         self.obj_to_source_id[env_ids] = -1
         self.stack_layout[env_ids] = -1
 
@@ -148,6 +149,7 @@ class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
                 k = torch.randint(1, min(len(global_indices), max_instances_per_sku) + 1, (1,)).item()
                 selected = torch.tensor(global_indices)[torch.randperm(len(global_indices))[:k]]
                 target_objs.extend(selected.tolist())
+                self.target_need_sku_num[env_id_val, 0, sku_idx] = k
 
             # --- 4. 目标物尽量均匀分配到各箱 (round-robin) ---
             shuffled_targets = [target_objs[i] for i in torch.randperm(len(target_objs)).tolist()]
@@ -159,7 +161,8 @@ class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
             for box_idx in range(num_boxes):
                 for obj_idx in box_contents[box_idx]:
                     self.obj_to_source_id[env_id_val, obj_idx] = box_idx
-                    self.obj_to_target_id[env_id_val, obj_idx] = 0
+                    self.obj_can_to_targets_ids[env_id_val, obj_idx, :] = 0
+                    self.obj_can_to_targets_ids[env_id_val, obj_idx, 0] = 1
 
                 if not box_contents[box_idx]:
                     continue
@@ -204,7 +207,7 @@ class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
                         self.stack_layout[env_id_val, box_idx, stack_idx, pos] = obj_idx
 
         self.is_active_mask[env_ids] = (self.obj_to_source_id[env_ids] != -1)
-        self.is_target_mask[env_ids] = (self.obj_to_target_id[env_ids] != -1)
+        self.is_target_mask[env_ids] = (self.obj_can_to_targets_ids[env_ids] == 1).any(dim=-1)
 
     # ------------------------------------------------------------------ #
     #                       物品生成（Spawn）                               #

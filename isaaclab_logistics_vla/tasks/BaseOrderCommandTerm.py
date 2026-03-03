@@ -60,18 +60,10 @@ class BaseOrderCommandTerm(CommandTerm):
         )
 
         #核心映射
-        if not is_multi_target:     #单订单情况
-            #物品 -> 应该去哪个订单箱？
-            # 值范围：0 ~ num_targets-1。如果值为 -1 代表该物品本局是干扰物。
-            self.obj_to_target_id = torch.full(
-                (self.num_envs, self.num_objects), -1, dtype=torch.long, device=self.device
-            )
-        else:
-            #物品 -> 可以去哪些订单箱
-            #布尔取值，代表是否。如果！值全部为 0！ 代表该物品本局是干扰物。
-            self.obj_to_targets_ids = torch.full(
-                (self.num_envs, self.num_objects, self.num_targets), 0, dtype=torch.long, device=self.device
-            )
+        #每个订单箱中，每种SKU最多需要几个
+        self.target_need_sku_num = torch.full(
+            (self.num_envs,self.num_targets,self.num_skus), 0, dtype=torch.long, device=self.device
+        )
 
         # [核心映射 2] 物品 -> 应该从哪个原料箱生成？
         # 值范围：0 ~ num_sources-1  -1代表该物品本局不考虑

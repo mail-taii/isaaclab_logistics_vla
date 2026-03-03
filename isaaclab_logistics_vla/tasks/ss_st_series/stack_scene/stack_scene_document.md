@@ -74,7 +74,7 @@
 在基类负责「哪个物体对应哪个 SKU、属于哪个 env」的基础上，本函数完成「**随机原料箱 + 堆叠布局规划**」：
 
 1. **清空状态**
-   - 将 `obj_to_target_id / obj_to_source_id / stack_layout` 在 `env_ids` 上全部置为 -1。
+   - 将 `target_need_sku_num` 在 `env_ids` 上置为 0，`obj_to_source_id / stack_layout` 置为 -1。
 2. **读取堆叠参数**
    - 从 cfg 中读取 `max_stacks`, `max_per_stack`, `max_active_skus`。
 3. **逐 env 处理**
@@ -90,14 +90,14 @@
 4. **激活物体并写回映射**
    - 对每种选中的 SKU，根据 `counts[i]` 随机挑出若干个实例：
      - 将这些实例的 `obj_to_source_id` 设为 `selected_source_box`；
-     - 将 `obj_to_target_id` 统一设为 0（**当前版本只有目标物，没有显式干扰物**）。
+     - 写入 `target_need_sku_num[env_id, 0, sku_idx] = counts[i]`，记录 0 号订单箱对该 SKU 的需求数量（**当前版本只有目标物，没有显式干扰物**）。
 5. **构建堆叠布局 `stack_layout`**
    - 使用 `stacks: list[list[int]] = [[] for _ in range(n_stacks)]`；
    - 遍历所有激活的物体列表，按「**同种 SKU 优先填满当前摞，满了再换下一摞**」进行分配；
    - 每一摞内部再按 `base_area` 从大到小排序（底部最大，顶部最小）；
    - 最终将布局写入 `self.stack_layout[env_id, selected_source_box, stack_idx, pos]` 中。
 
-最后，将 `is_active_mask` / `is_target_mask` 由 `obj_to_source_id` / `obj_to_target_id` 推导出来，供后续指标和奖励使用。
+最后，`is_active_mask` 由 `obj_to_source_id != -1` 推导，`is_target_mask` 直接等于 `is_active_mask`（当前版本所有活跃物品均为目标物），供后续指标和奖励使用。
 
 ### 2.4 物品生成（`_spawn_items_in_source_boxes`）
 
