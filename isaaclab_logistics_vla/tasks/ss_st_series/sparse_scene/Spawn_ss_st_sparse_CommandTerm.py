@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 
 class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
 
+    #核心映射
+    #每个订单箱中，每种SKU最多需要几个
+    self.target_need_sku_num = torch.full(
+        (self.num_envs,self.num_targets,self.num_skus), 0, dtype=torch.long, device=self.device
+    )
     
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
