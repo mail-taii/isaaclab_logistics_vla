@@ -21,97 +21,73 @@ class AssignSSSTCommandTerm(BaseOrderCommandTerm):
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
 
-
     def _update_assign_metrics(self):
-        current_states = self.object_states
-
-        # 1. 统计成功数量 (N,)
-        num_success = (current_states == 3).sum(dim=1).float()
-
-        # 2. 统计【本局】有效目标总数 (N,) is_target_mask 的和
-        num_targets = self.is_target_mask.sum(dim=1).float()
+        """
+            基于SKU需求量(target_need_sku_num)和现有量(target_contain_sku_num) 
+            更新MDP的核心度量指标
+        """
+        #---1. 核心数量统计(Shape: [num_envs])---
+        #实际有效数量：即使放多了，也只计算到需求量上限
+        effective_contain = torch.clamp(self.target_contain_sku_num, max=self.target_need_sku_num)
         
-        # 3. 统计活跃物品总数 (N,)
-        num_active = self.is_active_mask.sum(dim=1).float()
+        #汇总统计：每个环境的总需求量、总有效获得量、总活跃物体数
+        total_need = self.target_need_sku_num.sum(dim=(1, 2)).float()
+        total_effective_have = effective_contain.sum(dim=(1, 2)).float()
+        total_active = self.is_active_mask.sum(dim=1).float()
         
-        # 防止除零 (如果有环境完全没有目标)
-        valid_envs = (num_targets > 0)
-        valid_active = (num_active > 0)
+        #预防除零错误的安全掩码
+        valid_envs = (total_need > 0)
+        valid_active = (total_active > 0)
 
-        # --- Metric 1: 订单完成率 ---
-        completion_rate = torch.zeros_like(num_success)
-        completion_rate[valid_envs] = num_success[valid_envs] / num_targets[valid_envs]
+        #---Metric 1: 订单完成率 (Order Completion Rate) ---
+        completion_rate = torch.zeros_like(total_need)
+        completion_rate[valid_envs] = total_effective_have[valid_envs] / total_need[valid_envs]
         self.metrics["order_completion_rate"] = completion_rate
 
-        # --- Metric 2: 平均完成时间 ---
-        # 逻辑：当前耗时 / 已完成数量
+        # --- Metric 2: 全订单成功率 (Whole Order Success) ---
+        # 当实际有效拥有的数量 == 订单需要的总数量时，视为全订单成功
+        whole_order_success = torch.zeros_like(total_need)
+        whole_order_success[valid_envs] = (total_effective_have[valid_envs] == total_need[valid_envs]).float()
+        self.metrics["whole_order_success"] = whole_order_success
+
+        # --- Metric 3: 平均完成时间 (Mean Action Time) ---
         current_time_s = self.env.episode_length_buf.float() * self.env.step_dt
-        
-        mean_time = torch.zeros_like(num_success)
-        has_success = (num_success > 0)
-        mean_time[has_success] = current_time_s[has_success] / num_success[has_success]
+        mean_time = torch.zeros_like(total_need)
+        has_success = (total_effective_have > 0)
+        mean_time[has_success] = current_time_s[has_success] / total_effective_have[has_success]
         self.metrics["mean_action_time"] = mean_time
 
-        # --- Metric 3: 失败率 (failure_rate) ---
-        # 所有活跃物品中，状态为4（失败）的比例
-        num_failed = ((current_states == 4) & self.is_active_mask).sum(dim=1).float()
-        failure_rate = torch.zeros_like(num_failed)
-        failure_rate[valid_active] = num_failed[valid_active] / num_active[valid_active]
+        # --- Metric 4: 失败率 (Failure Rate) ---
+        # 依据 BaseOrderCommandTerm，状态 10 代表物理上失败（例如掉出场外）
+        num_failed = (self.is_active_mask & (self.object_states == 10)).sum(dim=1).float()
+        failure_rate = torch.zeros_like(total_need)
+        failure_rate[valid_active] = num_failed[valid_active] / total_active[valid_active]
         self.metrics["failure_rate"] = failure_rate
 
-        # --- Metric 4: 错抓率 (wrong_pick_rate) ---
-        # 干扰物 = 活跃但非目标物 (is_active_mask & ~is_target_mask)
-        # 错抓 = 干扰物被移动了（状态不是1-待处理）
-        distractor_mask = self.is_active_mask & (~self.is_target_mask)
+        # --- Metric 5: 错抓率 (Wrong Pick Rate) ---
+        # 依然使用分配时留下的标记 (-1) 来识别绝对的干扰物
+        distractor_mask = self.is_active_mask & (self.obj_to_target_id == -1)
         num_distractors = distractor_mask.sum(dim=1).float()
         
-        # 干扰物被移动 = 干扰物 且 (状态不是1，说明离开了原料箱)
-        distractor_moved = (distractor_mask & (current_states != 1)).sum(dim=1).float()
+        # 错抓判定：干扰物离开了原料箱。
+        # 依据 BaseOrderCommandTerm: 1 代表原料箱1。状态不是 1 且激活，说明被移动了。
+        distractor_moved = (distractor_mask & (self.object_states != 1) & (self.object_states != -1)).sum(dim=1).float()
         
-        wrong_pick_rate = torch.zeros_like(distractor_moved)
+        wrong_pick_rate = torch.zeros_like(total_need)
         valid_distractors = (num_distractors > 0)
         wrong_pick_rate[valid_distractors] = distractor_moved[valid_distractors] / num_distractors[valid_distractors]
         self.metrics["wrong_pick_rate"] = wrong_pick_rate
 
-        # --- Metric 5: 错放率 (wrong_place_rate) ---
-        # 目标物放到了错误的目标箱
-        # 需要检测：目标物 且 在某个目标箱中 但不是正确的目标箱
-        wrong_place_count = self._count_wrong_placements()
+        # --- Metric 6: 错放率 (Wrong Place Rate) ---
+        # 【全新算法】: 基于数量的优雅判定
+        # 错放数量 = 箱子内某 SKU 实际数量 - 需要的数量 (且最小为 0)
+        # 无论是错放了不需要的干扰物，还是放入了过多(冗余)的目标 SKU，都会被精准捕获。
+        wrong_place_count = torch.clamp(self.target_contain_sku_num - self.target_need_sku_num, min=0).sum(dim=(1, 2)).float()
         
-        # 已处理的目标物 = 目标物 且 状态不是1（已离开原料箱）
-        processed_targets = (self.is_target_mask & (current_states != 1)).sum(dim=1).float()
+        # 已处理物体数 = 离开原料箱的激活物体数
+        processed_items = (self.is_active_mask & (self.object_states != 1) & (self.object_states != -1)).sum(dim=1).float()
         
         wrong_place_rate = torch.zeros_like(wrong_place_count)
-        valid_processed = (processed_targets > 0)
-        wrong_place_rate[valid_processed] = wrong_place_count[valid_processed] / processed_targets[valid_processed]
+        valid_processed = (processed_items > 0)
+        wrong_place_rate[valid_processed] = wrong_place_count[valid_processed] / processed_items[valid_processed]
         self.metrics["wrong_place_rate"] = wrong_place_rate
-
-    def _count_wrong_placements(self) -> torch.Tensor:
-        """
-        统计每个环境中，目标物被放到错误目标箱的数量
-        返回: (N,) 每个环境的错放数量
-        """
-        from isaaclab_logistics_vla.utils.object_position import check_object_in_box
-        
-        env_ids = torch.arange(self.num_envs, device=self.device)
-        wrong_place_count = torch.zeros(self.num_envs, device=self.device)
-        
-        for obj_idx, obj_asset in enumerate(self.object_assets):
-            # 只检查目标物
-            is_target = self.is_target_mask[:, obj_idx]
-            if not is_target.any():
-                continue
-                
-            # 该物品应该去的目标箱ID
-            correct_target_id = self.obj_to_target_id[:, obj_idx]
-            
-            # 检查是否在某个错误的目标箱中
-            for k in range(self.num_targets):
-                in_box = check_object_in_box(
-                    env_ids, obj_asset, self.target_box_assets[k], self.box_size_tensor
-                )
-                # 错放条件：是目标物 且 在箱子k中 且 k不是正确的目标箱
-                wrong_in_box = is_target & in_box & (correct_target_id != k)
-                wrong_place_count += wrong_in_box.float()
-        
-        return wrong_place_count
