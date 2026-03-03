@@ -17,7 +17,7 @@ from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, qu
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
-    from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
+    from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
 from isaaclab_logistics_vla.utils.object_position import *
@@ -62,10 +62,18 @@ class BaseOrderCommandTerm(CommandTerm):
         #核心映射
         #每个订单箱中，每种SKU最多需要几个
         self.target_need_sku_num = torch.full(
+<<<<<<< HEAD
             (self.num_envs,self.num_targets,self.num_skus), 0, dtype=torch.long, device=self.device
+=======
+            (self.num_envs,self.num_targets,self.num_skus), -1, dtype=torch.long, device=self.device
+>>>>>>> main
         )
 
-        # [核心映射 2] 物品 -> 应该从哪个原料箱生成？
+        #每个订单的状态 每个订单箱中，每种SKU实际上现有几个
+        self.target_contain_sku_num = torch.full(
+            (self.num_envs,self.num_targets,self.num_skus), 0, dtype=torch.long, device=self.device
+        )
+            
         # 值范围：0 ~ num_sources-1  -1代表该物品本局不考虑
         self.obj_to_source_id = torch.full(
             (self.num_envs, self.num_objects), -1, dtype=torch.long, device=self.device
@@ -75,14 +83,10 @@ class BaseOrderCommandTerm(CommandTerm):
         self.is_active_mask = torch.zeros(
             (self.num_envs, self.num_objects), dtype=torch.bool, device=self.device
         )
-        # is_target: 本局是否为目标 (是 active 且不是干扰物)
-        self.is_target_mask = torch.zeros(
-            (self.num_envs, self.num_objects), dtype=torch.bool, device=self.device
-        )
 
-        # 记录每个物品的状态：0=待生成, 1=待处理, 2=抓取中, 3=已完成, 4=失败
-        self.object_states = torch.zeros(
-            (self.num_envs, self.num_objects),  dtype=torch.long, device=self.device
+        # 每个物品的状态：-1 = 不出现 0 = 在抓取中 1 2 3 = 原料箱123 4 5 6 = 目标箱123 10 = 物理上失败
+        self.object_states = torch.full(
+            (self.num_envs, self.num_objects), -1, dtype=torch.long, device=self.device
         )
 
         self.order_completion = torch.zeros(
@@ -185,6 +189,7 @@ class BaseOrderCommandTerm(CommandTerm):
         return msg
     
     def _resample_command(self, env_ids: Sequence[int]):
+
         # 保存动态指标
         self._save_dynamic_metrics(env_ids)
         
@@ -411,62 +416,119 @@ class BaseOrderCommandTerm(CommandTerm):
             # --- 5. 更新指针：指向下一个场景配置 ---
             self.env_replay_ptr[env_id] = (current_idx + 1) % self.num_replay_configs
 
-    @abstractmethod
     def _update_object_states(self):
-        raise NotImplementedError
-    
-    def _check_objects_in_source_box(self, env_ids):
-        """
-            return (N,O) O = len(objects),N = len(env_ids)
-            N个环境中,每个物体是否在其原来分配的原料箱内
-            如某物体未出现，依然为False
-        """
-        results = []
+        env_ids = torch.tensor(range(self.num_envs),dtype =torch.int32, device=self.device)
 
-        # 获取分配规则 (N, O)
-        # source_ids_all[:, i] 代表第 i 个物体应该在哪个原料箱
-        source_ids_all = self.obj_to_source_id[env_ids]
+        # 1. 基础掩码获取 (Shape: [N, O])
+        active_mask = self.is_active_mask
+        failed_mask = self._check_objects_failure(env_ids)
+        valid_mask = active_mask & (~failed_mask)
 
-        # --- 外层循环：遍历每一个物体 (SKU) ---
+        # 2. 初始化状态数组
+        # 默认全部为 -1 (未出现)
+        new_states = torch.full((self.num_envs, self.num_objects), -1, dtype=torch.long, device=self.device)
+
+        # 激活且未失败的物体，默认状态设为 0 (抓取中/运输中)
+        new_states[valid_mask] = 0
+
+        # 物理失败的物体，状态直接设为 10
+        failed_active_mask = active_mask & failed_mask
+        new_states[failed_active_mask] = 10
+
+        # 3. 组织所有的箱子资产和它们对应的状态 ID
+        all_boxes_info = []
+        for k in range(self.num_sources):
+            all_boxes_info.append((self.source_box_assets[k], k + 1))
+        for k in range(self.num_targets):
+            all_boxes_info.append((self.target_box_assets[k], self.num_sources + k + 1))
+
+        # 4. 遍历物体进行物理判定 (调用你的原函数)
         for i, obj_asset in enumerate(self.object_assets):
-            # 1. 拿到该物体"应该"去的原料箱 ID (N, 1) -> (N,)
-            target_source_id = source_ids_all[:, i]
-            
-            # 初始化该物体的结果列 (N,)
-            # 默认 False
-            obj_in_correct_source = torch.zeros_like(target_source_id, dtype=torch.bool)
+            # 取出第 i 个物体在所有环境中的“有效”掩码 (N,)
+            obj_valid_mask = valid_mask[:, i]
 
-            # --- 内层循环：遍历所有原料箱 ---
-            for k in range(self.num_sources):
-                relevant_mask = (target_source_id == k)
-                # 剪枝：如果没有任何一个环境符合条件，完全跳过
-                if not relevant_mask.any():
-                    continue
+            # 极速剪枝：如果这个物体在所有环境中都没生成或都掉落了，直接跳过，节省算力
+            if not obj_valid_mask.any():
+                continue
 
-                # 只拿出那些 "确实需要检测" 的环境 ID
-                subset_env_ids = env_ids[relevant_mask]
+            # 仅仅提取出该物体依然有效的环境 ID (N`,)
+            valid_env_ids = env_ids[obj_valid_mask]
 
-                # A. 物理判定：物体 i 是否在 原料箱 k 里？返回 (N`,)
-                is_in_subset = check_object_in_box(
-                    subset_env_ids, 
-                    obj_asset,                 # 单个物体资产
-                    self.source_box_assets[k], # 单个箱子资产
-                    box_size = self.box_size_tensor
+            for box_asset, state_id in all_boxes_info:
+                # 调用你验证过的原函数，返回布尔值 (N`,)
+                is_in_box = self.check_object_in_box(
+                    valid_env_ids,
+                    obj_asset,
+                    box_asset,
+                    self.box_size_tensor
                 )
-                
-                obj_in_correct_source[relevant_mask] = is_in_subset
 
-            # 将该物体在所有环境的结果存入列表
-            results.append(obj_in_correct_source)
+                # 如果在某些环境里，这个物体确实在这个箱子里
+                if is_in_box.any():
+                    # 映射回原始的 env_ids
+                    hit_env_ids = valid_env_ids[is_in_box]
+                    # 覆盖这些环境下的物体状态
+                    new_states[hit_env_ids, i] = state_id
+            
+        # 5. 更新全局状态
+        self.object_states = new_states
 
-        # --- 最终拼接 ---
-        # 列表里有 O 个 (N,) 的张量 -> 堆叠成 (N, O)
-        return torch.stack(results, dim=1)
+    def _check_objects_failure(self, env_ids):
+        is_failed = torch.zeros((len(env_ids), self.num_objects), dtype=torch.bool, device=self.device)
+
+        for i, obj_asset in enumerate(self.object_assets):
+            z_pos = obj_asset.data.root_pos_w[env_ids, 2]
+            # 阈值设为 0.3 (原料箱在 0.75，稍微掉下来一点不算，必须是掉到地上)
+            is_failed[:, i] |= (z_pos < 0.3)
+
+        return is_failed
     
     def _update_metrics(self):
         self._update_object_states()
+        self._update_target_states()
         self._update_assign_metrics()
         self._update_spawn_metrics()
+
+    def _update_target_states(self):
+        """
+        根据最新的 self.object_states，统计每个目标箱中包含的各个 SKU 数量。
+        更新 self.target_contain_sku_num，其形状为 (num_envs, num_targets, num_skus)
+        """
+        # 1. 每次计算前清零。因为我们要根据当前的物理状态完全重新统计
+        self.target_contain_sku_num.zero_()
+
+        # 2. 外层循环：遍历每一种 SKU 类目
+        for sku_idx, sku_name in enumerate(self.sku_names):
+            
+            # 获取属于当前 SKU 的所有物体实例索引
+            obj_indices = self.sku_to_indices.get(sku_name, [])
+            
+            # 极速剪枝：如果当前任务根本没有这种 SKU 的实例，直接跳过
+            if not obj_indices:
+                continue
+                
+            # 提取这些属于该 SKU 的实例在所有环境中的状态
+            # sku_obj_states 形状: (num_envs, 当前 SKU 的实例数量)
+            sku_obj_states = self.object_states[:, obj_indices]
+
+            # 3. 内层循环：遍历每一个目标订单箱
+            for target_idx in range(self.num_targets):
+                
+                # 计算该目标箱对应的状态 ID
+                # 状态映射规则: 1~num_sources 为原料箱，后面的为目标箱
+                target_state_id = self.num_sources + target_idx + 1
+
+                # 核心并行计算：找出现有实例中，状态正好等于 target_state_id 的掩码
+                # is_in_target 形状: (num_envs, 当前 SKU 的实例数量)
+                # 里面的值为 True (1) 代表该实例正好在这个目标箱里
+                is_in_target = (sku_obj_states == target_state_id)
+
+                # 沿着实例维度 (dim=1) 求和，统计出每个环境中，该目标箱含有多少个该 SKU 的 True
+                # count_in_target 形状: (num_envs,)
+                count_in_target = is_in_target.long().sum(dim=1)
+
+                # 将统计结果直接赋值给记录张量对应的切片位置
+                self.target_contain_sku_num[:, target_idx, sku_idx] = count_in_target
 
 
     @abstractmethod
