@@ -452,7 +452,7 @@ class BaseOrderCommandTerm(CommandTerm):
 
             for box_asset, state_id in all_boxes_info:
                 # 调用你验证过的原函数，返回布尔值 (N`,)
-                is_in_box = self.check_object_in_box(
+                is_in_box = check_object_in_box(
                     valid_env_ids,
                     obj_asset,
                     box_asset,

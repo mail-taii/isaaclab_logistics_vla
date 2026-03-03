@@ -19,7 +19,7 @@ from .scene_cfg import SKU_DEFINITIONS
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
-    from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
+    from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
 # SKU 名称片段 → constant 参数字典的映射

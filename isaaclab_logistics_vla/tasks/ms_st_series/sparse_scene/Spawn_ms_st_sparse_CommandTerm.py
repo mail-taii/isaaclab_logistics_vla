@@ -17,7 +17,7 @@ from isaaclab_logistics_vla.utils.util import *
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
-    from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
+    from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 class Spawn_ms_st_sparse_CommandTerm(AssignDSSTCommandTerm):
     
