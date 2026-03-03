@@ -4,14 +4,15 @@ OpenPI 远程策略（复用 /home/junzhe/openpi 的 websocket+msgpack 推理服
 设计目标：
 - bench 侧遵循本项目的 Policy 接口：predict(ObservationDict) -> action_tensor
 - 网络与序列化复用 openpi-client 的 WebsocketClientPolicy（最小依赖、已实现 msgpack-numpy）
-- 输入侧把 ObservationDict 按 openpi policy server 的约定组装成 dict：
-    - "observation/image": uint8 RGB (H,W,3)（客户端侧 resize_with_pad 到 224）
-    - "observation/state": proprio state（这里先用 qpos/qvel 拼接，具体可按你的模型训练口径调整）
-    - "prompt": 指令文本（优先取 obs["instruction"]["text"]，否则使用默认/写死）
+- 默认按 openpi 的 DROID / π0.5-DROID 配置组装请求，适配 `serve_policy.py --env DROID`：
+    - "observation/exterior_image_1_left": uint8 RGB (H,W,3) —— 桌面大视角
+    - "observation/wrist_image_left":      uint8 RGB (H,W,3) —— 腕部/近景视角
+    - "observation/joint_position":        关节角向量（这里默认从 qpos 中切分）
+    - "observation/gripper_position":      夹爪开合标量（从 qpos 中切分或回退为 0）
+    - "prompt":                            指令文本（优先取 obs["instruction"]["text"]，否则使用默认/写死）
 
 注意：
 - 该策略假设远端服务器返回 {"actions": (horizon, action_dim)}，并取第 0 步作为当前动作。
-- 如果你的 openpi 模型输出的是 EE delta / chunk 等，需要在这里做后处理与动作映射。
 """
 
 from __future__ import annotations
@@ -102,12 +103,13 @@ class OpenPIRemotePolicy(Policy):
     api_key: Optional[str] = None
 
     # 输入选择
-    prefer_camera: Optional[str] = "head_camera"
+    prefer_camera: Optional[str] = "top_camera"
     image_size: int = 224
     default_instruction: str = "pick up the object and place it to the target"
 
     _client: Any = None
     _printed_once: bool = False
+    _debug_calls: int = 0
 
     @property
     def name(self) -> str:
@@ -136,17 +138,54 @@ class OpenPIRemotePolicy(Policy):
         actions_out = torch.zeros((num_envs, self.action_dim), device=self.device, dtype=torch.float32)
 
         for env_id in range(num_envs):
-            rgb_np = _pick_rgb_np(
+            # 从多相机里选两路图像：一张作为“大视角”（base），一张作为“腕部”（wrist）。
+            # 默认：prefer_camera 对应 base，相机列表中的下一路作为 wrist；如只存在一路，则 wrist 复用 base。
+            vision = obs.get("vision") or {}
+            cams = vision.get("cameras") or []
+
+            # base 相机索引
+            base_cam_idx = 0
+            if self.prefer_camera and cams and self.prefer_camera in cams:
+                base_cam_idx = cams.index(self.prefer_camera)
+            base_cam_name = cams[base_cam_idx] if cams else None
+
+            # wrist 相机索引：优先选 base 之后的下一路，否则回环或复用 base
+            if len(cams) >= 2:
+                wrist_cam_idx = (base_cam_idx + 1) % len(cams)
+            else:
+                wrist_cam_idx = base_cam_idx
+            wrist_cam_name = cams[wrist_cam_idx] if cams else None
+
+            rgb_base = _pick_rgb_np(
                 obs,
                 env_id=env_id,
-                prefer_camera=self.prefer_camera,
+                prefer_camera=base_cam_name,
                 resize_hw=(self.image_size, self.image_size),
             )
+            rgb_wrist = _pick_rgb_np(
+                obs,
+                env_id=env_id,
+                prefer_camera=wrist_cam_name,
+                resize_hw=(self.image_size, self.image_size),
+            )
+
             state_np = _build_state_np(obs, env_id=env_id)
 
+            # 简单约定：如果 state_np 维度足够，把前 7 维作为关节角，后 1 维作为夹爪；
+            # 否则回退为零向量（后续可根据具体机器人手动改映射）。
+            if state_np.shape[0] >= 8:
+                joint_pos = state_np[:7]
+                gripper_pos = state_np[7:8]
+            else:
+                joint_pos = np.zeros((7,), dtype=np.float32)
+                gripper_pos = np.zeros((1,), dtype=np.float32)
+
+            # 按 DROIDInputs 期望的键构造请求，适配 pi0/pi0.5 DROID 配置。
             request = {
-                "observation/image": rgb_np,
-                "observation/state": state_np,
+                "observation/exterior_image_1_left": rgb_base,
+                "observation/wrist_image_left": rgb_wrist,
+                "observation/joint_position": joint_pos,
+                "observation/gripper_position": gripper_pos,
                 "prompt": prompt,
             }
             response = self._client.infer(request)
@@ -162,13 +201,45 @@ class OpenPIRemotePolicy(Policy):
             else:
                 raise RuntimeError(f"Unexpected actions shape from server: {act.shape}")
 
-            if act0.shape[-1] != self.action_dim:
-                raise RuntimeError(
-                    f"action_dim mismatch: server={act0.shape[-1]} vs env={self.action_dim}. "
-                    "你需要在这里做动作映射/投影，或确保服务器使用匹配的动作空间训练。"
-                )
+            # openpi π0.5‑DROID 的输出维度为 8：7 个关节 + 1 个夹爪。
+            # 这里将其映射到 realman_dual_left_arm 的 17 维动作空间：
+            #   [0:7]   左臂 7 关节
+            #   [7:14]  右臂 7 关节（此处置零，不动）
+            #   [14]    左手夹爪（二值开/闭指令）
+            #   [15]    右手夹爪（置零，不动）
+            #   [16]    平台关节（置零，不动）
+            if act0.shape[-1] < 8:
+                raise RuntimeError(f"Expected at least 8-dim actions from openpi server, got {act0.shape[-1]}")
 
-            actions_out[env_id] = torch.from_numpy(act0.astype(np.float32)).to(self.device)
+            env_action = np.zeros((self.action_dim,), dtype=np.float32)
+
+            # 左臂 7 关节：直接拷贝 openpi 的前 7 维
+            env_action[:7] = act0[:7].astype(np.float32)
+
+            # 右臂 7 关节：保持 0（表示“不动”），如需双臂控制可在此扩展映射。
+            # env_action[7:14] 默认已为 0
+
+            # 左手夹爪：openpi 的第 8 维为连续 gripper position，这里用符号映射到二值开/闭指令。
+            g_raw = float(act0[7])
+            # g_cmd > 0 → 打开，g_cmd <= 0 → 闭合；幅值用 1.0 即可，由 BinaryJointPositionActionCfg 解释。
+            env_action[14] = 1.0 if g_raw > 0.0 else -1.0
+
+            # 右手夹爪 / 平台：保持 0（不动）。
+            # env_action[15] = 0.0
+            # env_action[16] = 0.0
+
+            # 调试打印：观测与动作（只打印前若干次、env0，避免刷屏）
+            if env_id == 0 and self._debug_calls < 10:
+                print("[OpenPIRemotePolicy][debug]")
+                print(f"  cameras: {cams}")
+                print(f"  base_cam: {base_cam_name}, wrist_cam: {wrist_cam_name}")
+                print(f"  joint_pos (sent to openpi): {joint_pos}")
+                print(f"  gripper_pos (sent to openpi): {gripper_pos}")
+                print(f"  openpi raw act0 (8-dim): {act0}")
+                print(f"  mapped env_action (first 8 dims): {env_action[:8]}")
+                self._debug_calls += 1
+
+            actions_out[env_id] = torch.from_numpy(env_action).to(self.device)
 
         if not self._printed_once:
             print("=== [OpenPIRemotePolicy] Connected and inferred once ===")
