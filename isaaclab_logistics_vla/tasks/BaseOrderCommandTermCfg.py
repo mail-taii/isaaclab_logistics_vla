@@ -6,12 +6,12 @@ from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 from isaaclab.utils import configclass
 
-from isaaclab_logistics_vla.tasks.OrderCommandTerm import OrderCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 @configclass
 class OrderCommandTermCfg(CommandTermCfg):
 
-    class_type:type = OrderCommandTerm
+    class_type:type = BaseOrderCommandTerm
     resampling_time_range = [1e5,1e5]
     asset_name: str = MISSING
 

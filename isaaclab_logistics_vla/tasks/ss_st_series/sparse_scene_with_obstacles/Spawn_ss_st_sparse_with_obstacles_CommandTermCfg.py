@@ -6,7 +6,7 @@ from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 from isaaclab.utils import configclass
 
-from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 # 确保此处引用的逻辑执行类名也带有后缀
 from .Spawn_ss_st_sparse_with_obstacles_CommandTerm import Spawn_ss_st_sparse_with_obstacles_CommandTerm
 
