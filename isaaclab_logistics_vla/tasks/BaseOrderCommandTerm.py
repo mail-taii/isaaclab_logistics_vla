@@ -69,6 +69,7 @@ class BaseOrderCommandTerm(CommandTerm):
         self.target_contain_sku_num = torch.full(
             (self.num_envs,self.num_targets,self.num_skus), 0, dtype=torch.long, device=self.device
         )
+        self.last_target_contain_sku_num = torch.zeros_like(self.target_contain_sku_num)
             
         # 值范围：0 ~ num_sources-1  -1代表该物品本局不考虑
         self.obj_to_source_id = torch.full(
@@ -84,6 +85,8 @@ class BaseOrderCommandTerm(CommandTerm):
         self.object_states = torch.full(
             (self.num_envs, self.num_objects), -1, dtype=torch.long, device=self.device
         )
+
+        self.last_object_states = torch.full_like(self.object_states, -1)
 
         self.order_completion = torch.zeros(
             (self.num_envs, self.num_targets), dtype=torch.bool, device=self.device
@@ -185,26 +188,23 @@ class BaseOrderCommandTerm(CommandTerm):
         return msg
     
     def _resample_command(self, env_ids: Sequence[int]):
-
-        # 保存动态指标
-        self._save_dynamic_metrics(env_ids)
-        
+        self.target_need_sku_num[env_ids] = -1
+        self.target_contain_sku_num[env_ids] = 0
+        self.order_completion[env_ids] = False
+        self.object_states[env_ids] = -1
         #-----check 场景持久化 ------
         if self.from_json == 1:
             # 只有模式 1 才执行回放
             self._resample_from_json(env_ids)
             # 重置状态
-            self.order_completion[env_ids] = False
-            self.object_states[env_ids] = 0
+            
             active_mask = self.is_active_mask[env_ids]
             self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
         else:
             # 模式 0 (Record) 和 模式 2 (Random) 都走正常生成流程
-            self._assign_objects_boxes(env_ids)
-            self.order_completion[env_ids] = False
+            self._assign_objects_boxes(env_ids)      
             self._spawn_items_in_source_boxes(env_ids)
             
-            self.object_states[env_ids] = 0
             active_mask = self.is_active_mask[env_ids]
             self.object_states[env_ids] = self.object_states[env_ids].masked_fill(active_mask, 1)
             
@@ -452,7 +452,7 @@ class BaseOrderCommandTerm(CommandTerm):
 
             for box_asset, state_id in all_boxes_info:
                 # 调用你验证过的原函数，返回布尔值 (N`,)
-                is_in_box = self.check_object_in_box(
+                is_in_box = check_object_in_box(
                     valid_env_ids,
                     obj_asset,
                     box_asset,
@@ -479,11 +479,44 @@ class BaseOrderCommandTerm(CommandTerm):
 
         return is_failed
     
+    # def compute_step_reward(self) -> torch.Tensor:
+    #     # 计算当前与目标的“绝对误差” (N, Targets, SKUs) -> (N,)
+    #     curr_error = torch.abs(self.target_need_sku_num - self.target_contain_sku_num).sum(dim=(1, 2))
+    #     # 计算上一帧的“绝对误差”
+    #     last_error = torch.abs(self.target_need_sku_num - self.last_target_contain_sku_num).sum(dim=(1, 2))
+
+    #     progress = last_error - curr_error
+    #     reward_progress = progress.float() * 5.0
+
+
+
     def _update_metrics(self):
+        # 将上一步的状态备份
+        self.last_object_states = self.object_states.clone()
+        self.last_target_contain_sku_num = self.target_contain_sku_num.clone()
+
         self._update_object_states()
         self._update_target_states()
-        self._update_assign_metrics()
-        self._update_spawn_metrics()
+        
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, float]:
+        if(env_ids != None):
+            #self._update_assign_metrics(env_ids)
+            #self._update_spawn_metrics(env_ids)
+            self._save_dynamic_metrics(env_ids)
+        info = super().reset(env_ids)
+
+        # 为了严谨，重置后立刻更新一次当前状态，获取最干净的初始态
+        self._update_object_states()
+        self._update_target_states()
+
+        # 强行抹平历史差异！这样新回合第一帧的 reward delta 就是 0
+        self.last_object_states[env_ids] = self.object_states[env_ids].clone()
+        self.last_target_contain_sku_num[env_ids] = self.target_contain_sku_num[env_ids].clone()
+
+        return info
+
+
 
     def _update_target_states(self):
         """
@@ -528,11 +561,11 @@ class BaseOrderCommandTerm(CommandTerm):
 
 
     @abstractmethod
-    def _update_assign_metrics(self):
+    def _update_assign_metrics(self,env_ids: Sequence[int] | None = None):
         raise NotImplementedError
     
     @abstractmethod
-    def _update_spawn_metrics(self):
+    def _update_spawn_metrics(self,env_ids: Sequence[int] | None = None):
         raise NotImplementedError
 
     def _save_dynamic_metrics(self, env_ids):

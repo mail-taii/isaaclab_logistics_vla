@@ -12,14 +12,14 @@ from isaaclab.utils import configclass
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
-    from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
+    from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 
 class AssignSSSTCommandTerm(BaseOrderCommandTerm):
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
-        super().__init__(cfg, env)
+        super().__init__(cfg, env,False)
 
     def _update_assign_metrics(self):
         """
