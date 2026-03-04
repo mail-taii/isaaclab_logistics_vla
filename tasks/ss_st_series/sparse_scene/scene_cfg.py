@@ -14,14 +14,14 @@ from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
 SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],3),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],3),
-    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],3),
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],2),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],2),
+    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],2),
 }
 
 
 @configclass
-class Spawn_ds_st_sparse_SceneCfg(BaseOrderSceneCfg):
+class Spawn_ss_st_sparse_SceneCfg(BaseOrderSceneCfg):
     robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
     robot.init_state.pos  = (0.96781,2.28535,0.216)
     robot.init_state.rot = (1,0,0,0)
@@ -50,4 +50,4 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
         
         # [关键] 动态注入到 MySceneCfg 类中
         # 这样 Isaac Lab 解析时就能看到这些属性
-        setattr(Spawn_ds_st_sparse_SceneCfg, instance_name, obj_cfg)
+        setattr(Spawn_ss_st_sparse_SceneCfg, instance_name, obj_cfg)

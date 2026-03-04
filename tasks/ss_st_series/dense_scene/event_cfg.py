@@ -64,6 +64,7 @@ class Spawn_ss_st_dense_EventCfg:
                 f"{ASSET_ROOT_PATH}/props/Collected_empty_plastic_package/textures/20260209_234859.png",
             ],
             #"words": "订单号 123456\n发往 2号订单箱子"
+            
         },
     )
 

@@ -6,8 +6,6 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 from isaaclab_logistics_vla.utils.object_position import *
 
-from isaaclab_logistics_vla.utils.object_position import set_asset_relative_position
-
 ASSET_ROOT_PATH = os.getenv("ASSET_ROOT_PATH", "")
 
 def randomize_unified_visual_texture(
@@ -180,13 +178,13 @@ def update_tray_positions(env, env_ids, tray_or_not):
     if env_ids is None:
         env_ids = torch.arange(env.num_envs, device=env.device)
     
-    # 从 env.scene 中获取箱子资产名称
+    # 修正 1: 从 env.scene 中获取箱子资产名称
     # 假设你的箱子资产在 SceneCfg 中被命名为 s_box_1, s_box_2, s_box_3
     source_box_assets = ["s_box_1", "s_box_2", "s_box_3"] 
     
     for box_idx, box_asset in enumerate(source_box_assets):
         box_asset_obj = env.scene[box_asset]
-        # 只有当列表长度足够时才处理
+        # 修正 2: 只有当列表长度足够时才处理
         if tray_or_not[box_idx]:
             print(f"Updating positions for trays related to {box_asset} in envs {env_ids.cpu().numpy()}")
 
