@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 
-class AssignDSSTCommandTerm(BaseOrderCommandTerm):
+class AssignMSSTCommandTerm(BaseOrderCommandTerm):
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
-        super().__init__(cfg, env)
+        super().__init__(cfg, env,False)
 
 
     def _update_assign_metrics(self):
