@@ -55,8 +55,8 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
         tray_config = getattr(self.cfg, "tray_or_not", [0, 0, 0])
         is_tray_scene = tray_config[0]
 
-        BOX_X_LEN = 0.36
-        BOX_Y_LEN = 0.56
+        BOX_X_LEN = WORK_BOX_PARAMS['X_LENGTH']
+        BOX_Y_LEN = WORK_BOX_PARAMS['Y_LENGTH']
         TRAY_X_LEN = 0.30
         TRAY_Y_LEN = 0.23
         resolution = 0.005
@@ -78,8 +78,10 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
             else: p = CRACKER_BOX_PARAMS 
 
             raw_dims = torch.tensor([p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH']], device=self.device)
-            if any(s in obj_name for s in SCALED_OBJECTS1): raw_dims *= SCALE_FACTOR1
-            elif any(s in obj_name for s in SCALED_OBJECTS2): raw_dims *= SCALE_FACTOR2
+            if any(s in obj_name for s in SCALED_OBJECTS1): 
+                raw_dims *= SCALE_FACTOR1
+            elif any(s in obj_name for s in SCALED_OBJECTS2): 
+                raw_dims *= SCALE_FACTOR2
             
             if force_ori is not None:
                 # 情况 A: 强制使用传入的朝向 (保持一致性)

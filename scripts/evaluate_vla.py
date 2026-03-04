@@ -44,7 +44,7 @@ register.auto_scan("isaaclab_logistics_vla.tasks")
 
 def main():
     # --- 修改点 3: 使用 register 加载配置 ---
-    # 动态从命令行参数加载，默认会加载 Spawn_ss_st_sparse_with_obstacles_EnvCfg
+    # 动态从命令行参数加载，默认会加载 Spawn_ms_st_dense_EnvCfg
     print(f"正在加载任务配置: {args_cli.task_scene_name}")
     env_cfg = register.load_env_configs(f'{args_cli.task_scene_name}')()
     

@@ -33,7 +33,6 @@ class Spawn_ms_st_sparse_CommandTerm(AssignMSSTCommandTerm):
         num_source_box = getattr(self.cfg, "num_source_box", 2)         # 每局生成几个原料箱
 
         num_envs = len(env_ids)
-        # 那cfg.num_source_box 就没用了，直接随机生成 2~3 个箱子??
         #self.num_source_box = torch.randint(low=2, high=4, size=(num_envs,), device=self.device)
 
         for env_id in env_ids:
@@ -68,7 +67,7 @@ class Spawn_ms_st_sparse_CommandTerm(AssignMSSTCommandTerm):
                     k = torch.randint(1, min(len(global_indices), m_max_per_sku) + 1, (1,)).item()
                     selected_objs = torch.tensor(global_indices)[torch.randperm(len(global_indices))[:k]]
 
-                    # 写入：目标物 (Source=0, Target=0) (SSST模式)
+                    # 写入：目标物 
                     self.obj_to_source_id[env_id, selected_objs] = box_id
                     self.obj_to_target_id[env_id, selected_objs] = 0
 
