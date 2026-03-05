@@ -478,17 +478,6 @@ class BaseOrderCommandTerm(CommandTerm):
             is_failed[:, i] |= (z_pos < 0.3)
 
         return is_failed
-    
-    # def compute_step_reward(self) -> torch.Tensor:
-    #     # 计算当前与目标的“绝对误差” (N, Targets, SKUs) -> (N,)
-    #     curr_error = torch.abs(self.target_need_sku_num - self.target_contain_sku_num).sum(dim=(1, 2))
-    #     # 计算上一帧的“绝对误差”
-    #     last_error = torch.abs(self.target_need_sku_num - self.last_target_contain_sku_num).sum(dim=(1, 2))
-
-    #     progress = last_error - curr_error
-    #     reward_progress = progress.float() * 5.0
-
-
 
     def _update_metrics(self):
         # 将上一步的状态备份
@@ -500,9 +489,16 @@ class BaseOrderCommandTerm(CommandTerm):
         
 
     def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, float]:
-        if(env_ids != None):
-            #self._update_assign_metrics(env_ids)
-            #self._update_spawn_metrics(env_ids)
+        if env_ids is None:
+            # 如果是 None (全局初始化)，直接显式地生成所有环境的 ID 列表
+            env_ids = list(range(self.num_envs))
+
+        if len(env_ids) > 0 and self.env.episode_length_buf[env_ids][0]>1:
+            if 'episode_physics_steps' not in self.metrics:
+                self.metrics['episode_physics_steps'] = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+            self.metrics['episode_physics_steps'][env_ids] = self.env.episode_length_buf[env_ids].float()
+            # self._update_assign_metrics(env_ids)
+            # self._update_spawn_metrics(env_ids)
             self._save_dynamic_metrics(env_ids)
         info = super().reset(env_ids)
 
@@ -572,31 +568,29 @@ class BaseOrderCommandTerm(CommandTerm):
         if len(env_ids) == 0:
             return
         
-        extracted_data = {}
+        def _slice_nested_dict(d:dict, target_id):
+            sliced_dict = {}
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    # 如果还是字典，继续往里钻
+                    sliced_dict[k] = _slice_nested_dict(v, target_id)
+                elif isinstance(v, torch.Tensor):
+                    # 找到 Tensor 了！直接切片，并转为普通 Python 数据给 JSON 用
+                    sliced_dict[k] = v[target_id].tolist()
+                else:
+                    # 如果是普通的标量（如 int, float），直接照抄
+                    sliced_dict[k] = v
+            return sliced_dict
+        
         ids_list = env_ids.tolist()
-        num_resets = len(ids_list)
-
-        for key, value in self.metrics.items():
-            # 防御性编程：确保只处理 Tensor 类型
-            if isinstance(value, torch.Tensor):
-                # .tolist() 会自动把 GPU 数据拉回 CPU 并转为 Python 浮点数/列表
-                # 如果 value 是 (N, 3)，这里就会变成 [[x,y,z], [x,y,z]...]，JSON 也能存
-                extracted_data[key] = value[env_ids].tolist()
 
         with open(self.log_path, "a", encoding='utf-8') as f:
-            for i in range(num_resets):
-                # 1. 构建基础信息
-                row_record = {
-                    "timestamp": time.time(),
-                    "env_id": ids_list[i],
-                }
+            for env_id in ids_list:
+                row_record = _slice_nested_dict(self.metrics, env_id)
 
-                # 2. 动态注入 metrics
-                for key, val_list in extracted_data.items():
-                    # val_list[i] 就是第 i 个被重置的环境对应的 metric 值
-                    row_record[key] = val_list[i]
+                row_record["timestamp"] = time.time()
+                row_record["env_id"] = env_id
 
-                # 3. 写入文件
                 f.write(json.dumps(row_record) + "\n")
 
     @abstractmethod
