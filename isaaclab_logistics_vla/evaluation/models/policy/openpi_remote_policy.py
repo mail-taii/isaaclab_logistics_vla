@@ -72,7 +72,7 @@ def _build_state_np(obs: Dict[str, Any], env_id: int) -> np.ndarray:
     qpos = rs.get("qpos")
     qvel = rs.get("qvel")
     if not (isinstance(qpos, torch.Tensor) and isinstance(qvel, torch.Tensor)):
-        # fallback：至少返回一个空向量，避免服务端崩溃；你后续可改成硬错误
+        # fallback：至少返回一个空向量，避免服务端崩溃；后续可改成硬错误
         return np.zeros((0,), dtype=np.float32)
     qpos_np = qpos[env_id].detach().to("cpu").numpy().astype(np.float32)
     qvel_np = qvel[env_id].detach().to("cpu").numpy().astype(np.float32)
