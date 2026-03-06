@@ -27,6 +27,19 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
 
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
+        #---障碍物兼容初始化---
+        self.obstacle_names = getattr(cfg, "obstacles", [])
+        if self.obstacle_names:
+            self.obstacle_assets = [env.scene[name] for name in self.obstacle_names if name in env.scene.keys()]
+            self.has_obstacles = True
+            #有障碍物时：左边列[0,1,2]给物品，障碍物放在右边列中心[4]
+            self.ITEM_COL_INDICES = [0, 1, 2]
+            self.OBSTACLE_CENTER_INDEX = 4
+        else:
+            self.obstacle_assets = []
+            self.has_obstacles = False
+            #无障碍物时：全箱6个槽位都给物品
+            self.ITEM_COL_INDICES = [0, 1, 2, 3, 4, 5]
 
     def _assign_objects_boxes(self, env_ids: Sequence[int]):
         #---初始化清理：抹除上一局的记忆---
@@ -39,6 +52,9 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
         n_active_skus = getattr(self.cfg, "num_active_skus", 3)         # 规定本局总共出现几种 SKU
         m_max_per_sku = getattr(self.cfg, "max_instances_per_sku", 2)   # 规定每种 SKU 最多生成几个实例
 
+        #获取当前模式下最大可用的物品槽位数(3或6)
+        max_slots = len(self.ITEM_COL_INDICES)
+
         for env_id in env_ids:
             #---第1步：采样本局活跃的SKU种类池---
             num_to_sample = min(n_active_skus, self.num_skus)
@@ -50,29 +66,38 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
             distractor_only_sku_indices = selected_sku_indices[:num_distractor_skus]
             target_sku_indices = selected_sku_indices[num_distractor_skus:]
 
+            # 容量保护指针：记录当前环境已经分配了几个物品
+            slots_used = 0
+
             #---第2步：处理目标SKU(核心需求与盈余干扰逻辑)---
             for sku_idx in target_sku_indices:
+                if slots_used >= max_slots: 
+                    break       #槽位已满，停止分配剩余SKU
+
                 sku_name = self.sku_names[sku_idx]
                 global_indices = self.sku_to_indices[sku_name]  #获取该类SKU在大数组中的所有实例索引
                 
                 #确定可用实例上限(不能超过配置的max_instances_per_sku，也不能超过模型库里实际拥有的数量)
                 max_avail = min(len(global_indices), m_max_per_sku)
-                if max_avail < 1:
-                    continue    # 如果没货了，直接跳过
+                #核心限制：最大生成量不能超过剩余的槽位数
+                max_can_spawn = min(max_avail, max_slots - slots_used)
+                if max_can_spawn < 1: 
+                    continue
                 
                 #【逻辑 A：确定需求量】
                 #目标箱真正需要几个？(随机1到max_avail个)
-                n_need = torch.randint(1, max_avail + 1, (1,)).item()
+                n_need = torch.randint(1, max_can_spawn + 1, (1,)).item()
                 #将需求量写入核心张量(SS-ST模式下，订单箱索引固定为0，即第0个目标箱)
                 self.target_need_sku_num[env_id, 0, sku_idx] = n_need
                 
                 #【逻辑 B：确定实际生成量】
                 #实际在箱子里生成几个？(必须>=n_need，多出来的就是同种类的干扰物)
-                n_spawn = torch.randint(n_need, max_avail + 1, (1,)).item()
+                n_spawn = torch.randint(n_need, max_can_spawn + 1, (1,)).item()
+                slots_used += n_spawn
                 
                 #从该SKU的所有实例库中，随机抽出n_spawn个具体物体
                 selected_objs = torch.tensor(global_indices)[torch.randperm(len(global_indices))[:n_spawn]]
-
+                
                 #由于这是SS-ST(单原料箱)，所以选中的物体统统放在第0号原料箱里
                 self.obj_to_source_id[env_id, selected_objs] = 0
 
@@ -193,7 +218,7 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
 
                 #执行底层放置命令
                 set_asset_relative_position(
-                    env=self.env, active_env_ids=active_env_ids,
+                    env=self.env, env_ids=env_ids,
                     target_asset=obj_asset, reference_asset=box_asset,
                     relative_pos=relative_pos, relative_quat=relative_quat
                 )
