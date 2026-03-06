@@ -5,6 +5,7 @@ Bunny 端需在 publish_periodically 中发布 /bunny_teleop/left_qpos 与 /bunn
 """
 from __future__ import annotations
 
+import os
 import threading
 from typing import Optional
 
@@ -45,14 +46,26 @@ class BunnyQposListener:
             self._latest_right = np.array(msg.data, dtype=np.float64)
 
     def start(self):
+        # 优先使用 Isaac Sim 内置的 rclpy（Python 3.11），避免因 source /opt/ros/humble 导致加载系统 Python 3.10 版本
+        import sys
+        try:
+            import isaacsim
+            _rclpy_path = os.path.join(
+                os.path.dirname(isaacsim.__file__), "exts", "isaacsim.ros2.bridge", "humble", "rclpy"
+            )
+            if os.path.isdir(_rclpy_path) and _rclpy_path not in sys.path:
+                sys.path.insert(0, _rclpy_path)
+        except Exception:
+            pass
+
         try:
             import rclpy
             from rclpy.node import Node
             from std_msgs.msg import Float64MultiArray
         except ImportError as e:
             raise ImportError(
-                "Bunny teleop 需要 ROS2 与 rclpy。请先 source 工作空间并安装："
-                " pip install (或 apt install ros-humble-std-msgs 等)。"
+                "Bunny teleop 需要 ROS2 与 rclpy。请确保启动脚本启用了 isaacsim.ros2.bridge"
+                "（run_bunny_teleop.py 已通过 --kit_args 添加）。勿用 pip 安装 rclpy，也勿 source /opt/ros/humble。"
             ) from e
 
         def run_spin():

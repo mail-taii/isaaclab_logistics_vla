@@ -12,7 +12,7 @@
 ## 依赖
 
 - 与 isaaclab_logistics_vla 相同（Isaac Lab、任务与机器人配置）。
-- **ROS2 + rclpy**：用于订阅 Bunny 发布的 qpos 话题（需先 `source` 工作空间或安装对应 ROS2 包）。
+- **ROS2**：使用 Isaac Sim 内置的 `isaacsim.ros2.bridge` 与 rclpy（无需 `source /opt/ros/humble`，也勿用 pip 安装 rclpy）。启动脚本已自动启用该扩展。
 
 ## 1. Bunny 端：发布 qpos 到 ROS2
 
@@ -42,11 +42,14 @@ self._qpos_pub_right.publish(msg_right)
 在 bench 上，先按 Bunny 文档启动 **vision server** 和 **robot server**（并确保已按上一步发布 qpos），再在 isaaclab_logistics_vla 仓库根目录执行：
 
 ```bash
-python scripts/run_bunny_teleop.py \
+conda activate env_isaaclab
+./scripts/run_bunny_teleop.sh \
   --task_scene_name Spawn_ds_st_sparse_EnvCfg \
   --asset_root_path /home/junzhe/Benchmark \
   --sim_device cuda:0
 ```
+
+也可直接 `python scripts/run_bunny_teleop.py ...`，若遇 `librcl_action.so` 等库加载错误，请改用上述 shell 脚本（会在 Python 启动前设置 `LD_LIBRARY_PATH`）。
 
 - `--task_scene_name`：与 `evaluate_vla.py` 一致的任务场景名。
 - `--left_topic` / `--right_topic`：若未改 Bunny 端话题名，用默认 `/bunny_teleop/left_qpos`、`/bunny_teleop/right_qpos` 即可。
@@ -63,5 +66,12 @@ Ctrl+C 结束。
 
 ## 4. 常见问题
 
-- **收不到数据**：确认 Bunny 端已发布上述两个话题（`ros2 topic list` / `ros2 topic echo`），且本机 ROS2 与 Bunny 在同一 DDS 域。
+- **收不到数据**：确认 Bunny 端已发布上述两个话题（`ros2 topic list` / `ros2 topic echo`），且 Isaac Sim 与 Bunny 在同一 DDS 域（默认 `ROS_DOMAIN_ID=0`，跨机需一致）。
+- **ModuleNotFoundError / librcl_action.so: cannot open shared object file**：启动脚本会自动设置 `ROS_DISTRO`、`RMW_IMPLEMENTATION`、`LD_LIBRARY_PATH`。若仍报错，**在激活 conda 后、运行脚本前**执行（必须在实际启动 Python 之前设置）：
+  ```bash
+  export ROS_DISTRO=humble
+  export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+  export LD_LIBRARY_PATH=$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim/exts/isaacsim.ros2.bridge/humble/lib:$LD_LIBRARY_PATH
+  ```
+  然后运行 `python scripts/run_bunny_teleop.py ...`
 - **延迟大**：保证 AVP 与 bench 在同一局域网；控制循环可用 `--control_hz` 提高（如 90），并避免仿真或渲染过载。

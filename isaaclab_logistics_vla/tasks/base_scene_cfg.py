@@ -15,9 +15,10 @@ from isaaclab_logistics_vla.utils.constant import *
 @configclass
 class BaseOrderSceneCfg(InteractiveSceneCfg):
     # plane
+    # physics_material=None 规避 Isaac Sim 5.0/无头模式下 default_environment.usd 无 Plane 子 prim 导致的 spawn_ground_plane 崩溃
     plane = AssetBaseCfg(
         prim_path="/World/GroundPlane",
-        spawn=GroundPlaneCfg(),
+        spawn=GroundPlaneCfg(physics_material=None),
     )
 
     # lights
