@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import CommandTerm
-from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
-class Spawn_ss_st_sparse_with_obstacles_CommandTerm(AssignSSSTCommandTerm):
+class Spawn_ss_st_sparse_with_obstacles_CommandTerm(BaseOrderCommandTerm):
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self.obstacle_names = getattr(cfg, "obstacles", ["large_obstacle"])

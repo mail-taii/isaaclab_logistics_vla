@@ -9,7 +9,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -19,11 +19,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
-class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
-    """
-        1. 逻辑分配：决定每个环境的订单需求量(target_need_sku_num)和实际生成量。
-        2. 物理生成：计算物体的位姿并将其放置到场景中。
-    """
+class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
 
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
@@ -234,5 +230,8 @@ class Spawn_ss_st_sparse_CommandTerm(AssignSSSTCommandTerm):
     def _update_command(self): 
         pass
 
-    def command(self): 
+    def command(self):
         pass
+
+    def __str__(self) -> str:
+        return "ss_st_sparse"

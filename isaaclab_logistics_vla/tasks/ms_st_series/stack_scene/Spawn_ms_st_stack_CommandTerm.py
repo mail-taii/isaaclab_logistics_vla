@@ -10,7 +10,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from isaaclab_logistics_vla.tasks.ms_st_series.Assign_ms_st_CommandTerm import AssignDSSTCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -32,7 +32,7 @@ _SKU_PARAMS_MAP = {
 }
 
 
-class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
+class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
     """
     多源-单目标 堆叠场景的 CommandTerm
 
@@ -40,7 +40,7 @@ class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
     1. 使用多个原料箱（随机 2~3 个），而非只用 1 个
     2. 所有激活物品均为目标物（暂不生成干扰物）
     3. 目标物在箱子间尽量均匀分配（round-robin）
-    4. 继承 AssignDSSTCommandTerm（含源箱清理率、均衡度等指标）
+    4. 继承 AssignMSSTCommandTerm（含源箱清理率、均衡度等指标）
 
     辅助变量 stack_layout:
         shape = [num_envs, num_sources, max_stacks, max_per_stack]
@@ -336,7 +336,7 @@ class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
         valid = total_weight > 0
         score = torch.zeros_like(weighted_success)
         score[valid] = weighted_success[valid] / total_weight[valid]
-        self.metrics["stack_weighted_score"] = score
+        self.eval_metrics["stack_weighted_score"] = score
 
     # ------------------------------------------------------------------ #
     #                       接口方法                                       #
@@ -347,3 +347,6 @@ class Spawn_ms_st_stack_CommandTerm(AssignDSSTCommandTerm):
 
     def command(self):
         pass
+
+    def __str__(self) -> str:
+        return "ms_st_stack"

@@ -124,7 +124,7 @@ def command_term_metric(env: ManagerBasedRLEnv, command_name: str, metric_key: s
         raise ValueError(f"Reward function cannot find command term '{command_name}'")
         
     # 3. 获取 Metric
-    # 假设你的 Term 已经在 _update_metrics 里更新了 self.metrics
+    # 假设你的 Term 已经在 _update_metrics 里更新了 self.eval_metrics
     # 这里的 val 是 (num_envs,) 的 Tensor
     val = term.metrics.get(metric_key)
     

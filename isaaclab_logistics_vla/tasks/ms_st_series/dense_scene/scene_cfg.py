@@ -14,18 +14,18 @@ from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
 SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],60),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],60),
-    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],60),
-    "CN_big": (CN_BIG_PARAMS['USD_PATH'],60),
-    "SF_small": (SF_SMALL_PARAMS['USD_PATH'],60),
-    "empty_plastic_package": (EMPTY_PLASTIC_PACKAGE_PARAMS['USD_PATH'],60),
-    "SF_big": (SF_BIG_PARAMS['USD_PATH'],60),
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],18),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],18),
+    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],18),
+    "CN_big": (CN_BIG_PARAMS['USD_PATH'],18),
+    "SF_small": (SF_SMALL_PARAMS['USD_PATH'],18),
+    "empty_plastic_package": (EMPTY_PLASTIC_PACKAGE_PARAMS['USD_PATH'],18),
+    "SF_big": (SF_BIG_PARAMS['USD_PATH'],18),
 }
 
 
 @configclass
-class Spawn_ss_st_dense_SceneCfg(BaseOrderSceneCfg):
+class Spawn_ms_st_dense_SceneCfg(BaseOrderSceneCfg):
     
     robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
     robot.init_state.pos  = (0.96781,2.28535,0.216)
@@ -35,12 +35,11 @@ class Spawn_ss_st_dense_SceneCfg(BaseOrderSceneCfg):
 
     ee_frame: FrameTransformerCfg = register.load_eeframe_configs('realman_franka_ee_eeframe')()
 
-delta = 0
 for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
     for i in range(count):
         # 实例名: cracker_box_0, cracker_box_1 ...
         instance_name = f"{sku_name}_{i}"
-        print(sku_name)
+        
         if sku_name == "cracker_box" or sku_name == "sugar_box" or sku_name == "tomato_soup_can":
             # 定义 Config
             obj_cfg = RigidObjectCfg(
@@ -52,7 +51,7 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
                         sleep_threshold=0.05
                     ),
                 ),
-                init_state=RigidObjectCfg.InitialStateCfg(pos=(10000+delta, 10000+delta, 0),rot=(1, 0, 0, 0)),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0),rot=(1, 0, 0, 0)),
             )
         else:
         #if sku_name == "CN_big" | sku_name == "SF_small" | sku_name == "empty_plastic_package" | sku_name == "SF_big":
@@ -65,12 +64,12 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
                         sleep_threshold=0.05
                     ),
                 ),
-                init_state=RigidObjectCfg.InitialStateCfg(pos=(10000+delta, 10000+delta, 0),rot=(1, 0, 0, 0)),
+                init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0),rot=(1, 0, 0, 0)),
             )
-        delta+=1
+        
         # [关键] 动态注入到 MySceneCfg 类中
         # 这样 Isaac Lab 解析时就能看到这些属性
-        setattr(Spawn_ss_st_dense_SceneCfg, instance_name, obj_cfg)
+        setattr(Spawn_ms_st_dense_SceneCfg, instance_name, obj_cfg)
 
 ASSET_ROOT_PATH = os.getenv("ASSET_ROOT_PATH", "")
 for i in range(6):
@@ -86,4 +85,4 @@ for i in range(6):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(30, 30, 0),rot=(1, 0, 0, 0)),
     )
-    setattr(Spawn_ss_st_dense_SceneCfg, f"tray_{i}", tray_cfg)
+    setattr(Spawn_ms_st_dense_SceneCfg, f"tray_{i}", tray_cfg)

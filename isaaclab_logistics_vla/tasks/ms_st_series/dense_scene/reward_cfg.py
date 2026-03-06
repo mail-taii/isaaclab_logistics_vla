@@ -4,7 +4,7 @@ from isaaclab.utils import configclass
 from isaaclab_logistics_vla.tasks import mdp
 
 @configclass
-class Spawn_ds_st_sparse_RewardCfg:
+class Spawn_ms_st_dense_RewardCfg:
     """Reward terms for the task."""
     
     # 1. 订单完成率奖励
@@ -26,35 +26,5 @@ class Spawn_ds_st_sparse_RewardCfg:
         params={
             "command_name": "order_info",
             "metric_key": "mean_action_time"
-        },
-    )
-
-    # 3. 失败率惩罚 (物品掉落等)
-    failure_rate_penalty = RewTerm(
-        func=mdp.command_term_metric,
-        weight=-1.0,  # 负奖励
-        params={
-            "command_name": "order_info",
-            "metric_key": "failure_rate"
-        },
-    )
-
-    # 4. 错抓率惩罚 (抓了干扰物)
-    wrong_pick_penalty = RewTerm(
-        func=mdp.command_term_metric,
-        weight=-1.0,  # 负奖励
-        params={
-            "command_name": "order_info",
-            "metric_key": "wrong_pick_rate"
-        },
-    )
-
-    # 5. 错放率惩罚 (放到错误的目标箱)
-    wrong_place_penalty = RewTerm(
-        func=mdp.command_term_metric,
-        weight=-1.0,  # 负奖励
-        params={
-            "command_name": "order_info",
-            "metric_key": "wrong_place_rate"
         },
     )
