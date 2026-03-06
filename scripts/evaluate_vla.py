@@ -14,7 +14,7 @@ parser.add_argument("--device", type=str, default='cuda:0')
 parser.add_argument("--from_json", type=int, default=2, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
 parser.add_argument("--asset_root_path",type=str,default="/home/wst/model_files/benchmark")
-parser.add_argument("--task_scene_name",type=str,default="Spawn_ss_st_stack_EnvCfg")
+parser.add_argument("--task_scene_name",type=str,default="Spawn_ms_st_dense_EnvCfg")
 
 args_cli, _ = parser.parse_known_args()
 

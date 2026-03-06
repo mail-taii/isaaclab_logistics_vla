@@ -10,7 +10,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from isaaclab_logistics_vla.tasks.ms_st_series.Assign_ms_st_CommandTerm import AssignMSSTCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -32,7 +32,7 @@ _SKU_PARAMS_MAP = {
 }
 
 
-class Spawn_ms_st_stack_CommandTerm(AssignMSSTCommandTerm):
+class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
     """
     多源-单目标 堆叠场景的 CommandTerm
 
@@ -336,7 +336,7 @@ class Spawn_ms_st_stack_CommandTerm(AssignMSSTCommandTerm):
         valid = total_weight > 0
         score = torch.zeros_like(weighted_success)
         score[valid] = weighted_success[valid] / total_weight[valid]
-        self.metrics["stack_weighted_score"] = score
+        self.eval_metrics["stack_weighted_score"] = score
 
     # ------------------------------------------------------------------ #
     #                       接口方法                                       #
@@ -347,3 +347,6 @@ class Spawn_ms_st_stack_CommandTerm(AssignMSSTCommandTerm):
 
     def command(self):
         pass
+
+    def __str__(self) -> str:
+        return "ms_st_stack"
