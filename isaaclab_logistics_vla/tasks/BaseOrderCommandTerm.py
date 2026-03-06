@@ -100,7 +100,7 @@ class BaseOrderCommandTerm(CommandTerm):
         #--------待check------ 场景持久化相关代码
         # --- 1. 基础属性初始化---
         self.from_json = getattr(cfg, "from_json", 2)
-        self.obstacle_names = getattr(cfg, "obstacles", [])
+        self.obstacle_names = getattr(cfg, "obstacles", []) or []
         self.obstacle_assets = [self.env.scene[name] for name in self.obstacle_names if name in self.env.scene.keys()]
         
         # 预定义回放相关变量，确保在所有模式下都存在这些属性
@@ -220,14 +220,12 @@ class BaseOrderCommandTerm(CommandTerm):
     def _spawn_items_in_source_boxes(self, env_ids: Sequence[int]):
         raise NotImplementedError
 
-    #----check 场景持久化 -----
+    #----check 场景持久化----
     def _record_order_env_info(self, env_ids: Sequence[int]):
         """
-        记录环境信息：将坐标转换为环境局部坐标并存入任务专属的 JSONL。
-        存储逻辑：Local_Pos = World_Pos - Env_Origin，增加对障碍物 Scale 的记录以适配随机化。
+            记录环境信息：将坐标转换为环境局部坐标并存入任务专属的JSONL
+            移除obj_to_target_id依赖，基于target_need_sku_num进行SKU级的精准追踪
         """
-
-        # --- 1. 准备环境 ID 列表 ---
         if isinstance(env_ids, torch.Tensor):
             ids_list = env_ids.tolist()
             env_ids_tensor = env_ids
@@ -235,77 +233,88 @@ class BaseOrderCommandTerm(CommandTerm):
             ids_list = list(env_ids)
             env_ids_tensor = torch.tensor(env_ids, device=self.device)
 
-        # 获取当前批次环境的世界原点坐标 (Shape: [len(ids_list), 3])
         batch_origins = self.env.scene.env_origins[env_ids_tensor]
 
-        # --- 2. 以追加模式打开文件 ---
+        #预构建obj_idx到sku_idx的反向映射字典，将时间复杂度降为O(1)
+        obj_idx_to_sku_idx = {}
+        for s_idx, sku_name in enumerate(self.sku_names):
+            for o_idx in self.sku_to_indices.get(sku_name, []):
+                obj_idx_to_sku_idx[o_idx] = s_idx
+
         with open(self.session_file, 'a', encoding='utf-8') as f:
             for i, env_id in enumerate(ids_list):
                 current_origin = batch_origins[i]
 
-                # --- 3. 构造基础数据结构 ---
+                #---1. 构造基础数据结构---
                 record = {
                     "timestamp": time.time(),
                     "env_id": env_id,
                     "task_name": self.task_name,
                     "obj_to_source_id": self.obj_to_source_id[env_id].tolist(),
-                    "obj_to_target_id": self.obj_to_target_id[env_id].tolist(),
+                    "target_need_sku_num": self.target_need_sku_num[env_id].tolist(),
                     "containers": {
                         "source_boxes": [
                             {
                                 "name": self.cfg.source_boxes[j],
                                 "pos": (self.source_box_assets[j].data.root_pos_w[env_id] - current_origin).tolist(),
                                 "rot": self.source_box_assets[j].data.root_quat_w[env_id].tolist()
-                            } for j in range(len(self.source_box_assets))
+                            } for j in range(self.num_sources)
                         ],
                         "target_boxes": [
                             {
                                 "name": self.cfg.target_boxes[j],
                                 "pos": (self.target_box_assets[j].data.root_pos_w[env_id] - current_origin).tolist(),
                                 "rot": self.target_box_assets[j].data.root_quat_w[env_id].tolist()
-                            } for j in range(len(self.target_box_assets))
+                            } for j in range(self.num_targets)
                         ]
                     },
                     "items": [],
-                    "obstacles": [], # 占位符
+                    "obstacles": [],
                     "orders": []
                 }
 
-                # --- 4. 填充物品明细 ---
+                #获取该环境对所有SKU的总需求量(Shape: [num_skus])
+                env_total_sku_needs = self.target_need_sku_num[env_id].sum(dim=0)
+
+                #---2. 填充物品明细---
                 for obj_idx, obj_name in enumerate(self.object_names):
                     is_active = self.is_active_mask[env_id, obj_idx].item()
                     s_idx = self.obj_to_source_id[env_id, obj_idx].item()
-                    t_idx = self.obj_to_target_id[env_id, obj_idx].item()
                     
-                    role = "target" if (is_active and t_idx != -1) else ("distractor" if is_active else "none")
-
+                    #逻辑判定：如果该物体激活，且它所属的SKU在本环境有任何需求(>0)，它就是target
+                    #否则，它就是纯粹的distractor(干扰物)
                     if is_active:
+                        sku_idx = obj_idx_to_sku_idx.get(obj_idx, -1)
+                        if sku_idx != -1 and env_total_sku_needs[sku_idx].item() > 0:
+                            role = "target"
+                        else:
+                            role = "distractor"
+                            
                         world_pos = self.object_assets[obj_idx].data.root_pos_w[env_id]
                         local_pos = (world_pos - current_origin).tolist()
                         local_rot = self.object_assets[obj_idx].data.root_quat_w[env_id].tolist()
                     else:
+                        role = "none"
                         local_pos = None
                         local_rot = None
 
                     record["items"].append({
                         "instance_name": obj_name,
                         "is_active": is_active,
-                        "logic_role": {"type": role, "source_box_idx": s_idx, "target_box_idx": t_idx},
+                        #注意：target_box_idx已废弃，因为实例不再绑定单一目标箱，统一设为-1
+                        "logic_role": {"type": role, "source_box_idx": s_idx, "target_box_idx": -1},
                         "spawn_pose": {
                             "pos": local_pos,
                             "rot": local_rot
                         } if is_active else None
                     })
 
-                # --- 5. 记录障碍物 (适配随机化尺寸) ---
-                # 只有当子类定义了障碍物资产时才进行记录
+                #---3. 记录障碍物---
                 if hasattr(self, "obstacle_assets") and self.obstacle_assets:
                     for j, asset in enumerate(self.obstacle_assets):
-                        # 获取世界位姿
                         w_pos = asset.data.root_pos_w[env_id]
                         w_quat = asset.data.root_quat_w[env_id]
                         
-                        # 如果资产尚未完全初始化或不支持 scale，则默认为 [1.0, 1.0, 1.0]
                         if hasattr(asset.data, "root_scale") and asset.data.root_scale is not None:
                             current_scale = asset.data.root_scale[env_id].tolist()
                         else:
@@ -313,54 +322,63 @@ class BaseOrderCommandTerm(CommandTerm):
 
                         record["obstacles"].append({
                             "instance_name": self.obstacle_names[j],
-                            "scale": current_scale, # 存储缩放信息，用于 resample 还原
+                            "scale": current_scale,
                             "spawn_pose": {
                                 "pos": (w_pos - current_origin).tolist(),
                                 "rot": w_quat.tolist()
                             }
                         })
 
-                # --- 6. 填充订单明细 ---
+                #---4. 填充订单明细---
                 for t_idx in range(self.num_targets):
-                    mask = (self.obj_to_target_id[env_id] == t_idx)
-                    if mask.any():
-                        match_indices = torch.where(mask)[0].tolist()
-                        s_idx = self.obj_to_source_id[env_id, match_indices[0]].item()
+                    need_array = self.target_need_sku_num[env_id, t_idx]
+                    
+                    if (need_array > 0).any():
+                        required_skus = {}
+                        for s_idx, sku_name in enumerate(self.sku_names):
+                            count = need_array[s_idx].item()
+                            if count > 0:
+                                required_skus[sku_name] = count
+
                         record["orders"].append({
                             "target_box_name": self.cfg.target_boxes[t_idx],
-                            "source_box_index": s_idx,
                             "target_box_index": t_idx,
-                            "required_items": [self.object_names[idx] for idx in match_indices]
+                            "required_skus": required_skus
                         })
 
-                # --- 7. 写入 JSONL ---
+                #---5. 写入JSONL---
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def _resample_from_json(self, env_ids: Sequence[int]):
         """
-        核心回放函数：从预加载的 JSON/JSONL 数据池中顺序读取配置，
-        并精确还原环境中的物体状态（包含随机化后的障碍物尺寸）。
+            核心回放函数：从预加载的JSON/JSONL数据池中顺序读取配置，
+            完美还原target_need_sku_num以及物理状态
         """
-        # 确保 env_ids 是 Tensor 格式
         if not isinstance(env_ids, torch.Tensor):
             env_ids_batch = torch.tensor(env_ids, device=self.device, dtype=torch.long)
         else:
             env_ids_batch = env_ids
 
         for env_id in env_ids_batch:
-            # --- 1. 顺序从池子中抽取索引 ---
             current_idx = self.env_replay_ptr[env_id].item()
             data = self.replay_data_pool[current_idx]
 
-            # --- 2. 恢复逻辑映射 (Tensor) ---
+            #---1. 恢复核心逻辑映射(完全剔除obj_to_target_id)---
             self.obj_to_source_id[env_id] = torch.tensor(data["obj_to_source_id"], device=self.device)
-            self.obj_to_target_id[env_id] = torch.tensor(data["obj_to_target_id"], device=self.device)
             self.is_active_mask[env_id] = (self.obj_to_source_id[env_id] != -1)
+            
+            #关键恢复：将JSON里的多维列表转换回GPU Tensor，确保后续Metrics评分正常！
+            if "target_need_sku_num" in data:
+                self.target_need_sku_num[env_id] = torch.tensor(
+                    data["target_need_sku_num"], device=self.device, dtype=torch.long
+                )
+            else:
+                #兼容非常老的JSONL，防止崩溃
+                self.target_need_sku_num[env_id] = 0
 
-            # 构造用于底层接口的批次 ID (Shape: [1])
             single_env_id = env_id.unsqueeze(0) if env_id.dim() == 0 else env_id
 
-            # --- 3. 还原物品 (is_active/is_not_active) ---
+            #---2. 还原物品位姿---
             for obj_idx, item_data in enumerate(data["items"]):
                 asset = self.object_assets[obj_idx]
                 
@@ -368,48 +386,36 @@ class BaseOrderCommandTerm(CommandTerm):
                     pos = torch.tensor(item_data["spawn_pose"]["pos"], device=self.device).unsqueeze(0)
                     rot = torch.tensor(item_data["spawn_pose"]["rot"], device=self.device).unsqueeze(0)
                     
-                    set_asset_position(
-                        env=self.env,
-                        env_ids=single_env_id,
-                        asset=asset,
-                        position=pos,
-                        quat=rot
-                    )
+                    set_asset_position(self.env, single_env_id, asset, pos, rot)
                 else:
-                    # 非活跃物品：隐藏到地下深处并清空速度
                     far_away_pos = torch.tensor([[0.0, 0.0, -100.0]], device=self.device)
                     set_asset_position(self.env, single_env_id, asset, far_away_pos)
                     if hasattr(asset, "write_root_velocity_to_sim"):
                         asset.write_root_velocity_to_sim(torch.zeros((1, 6), device=self.device), env_ids=single_env_id)
 
-            # --- 4. 还原障碍物 ---
+            #---3. 还原障碍物---
             obstacles_data = data.get("obstacles", [])
             for obs in obstacles_data:
                 obs_name = obs["instance_name"]
                 if obs_name in self.env.scene.keys():
                     asset = self.env.scene[obs_name]
                     
-                    # A. 还原缩放 (Scale) - 必须在位姿还原之前或同时进行，以确保物理边界正确
                     if "scale" in obs and hasattr(asset, "write_root_scale_to_sim"):
                         target_scale = torch.tensor(obs["scale"], device=self.device).unsqueeze(0)
                         asset.write_root_scale_to_sim(target_scale, env_ids=single_env_id)
                     
-                    # B. 还原位姿 (Pose)
                     pos = torch.tensor(obs["spawn_pose"]["pos"], device=self.device)
                     rot = torch.tensor(obs["spawn_pose"]["rot"], device=self.device)
                     world_pos = pos + self.env.scene.env_origins[env_id]
                     root_pose = torch.cat([world_pos, rot]).unsqueeze(0)
                     
                     asset.write_root_pose_to_sim(root_pose, env_ids=single_env_id)
-                    
-                    # C. 速度清零：防止上一局残留的动量影响新一局
                     asset.write_root_velocity_to_sim(torch.zeros((1, 6), device=self.device), env_ids=single_env_id)
                     
-                    # D. 强制同步内部数据缓冲区 (data.root_pos_w 等)
                     if hasattr(asset, "reset"):
                         asset.reset(env_ids=single_env_id)
             
-            # --- 5. 更新指针：指向下一个场景配置 ---
+            #---4. 更新指针---
             self.env_replay_ptr[env_id] = (current_idx + 1) % self.num_replay_configs
 
     def _update_object_states(self):
