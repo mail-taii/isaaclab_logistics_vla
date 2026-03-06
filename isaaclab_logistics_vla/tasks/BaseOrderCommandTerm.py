@@ -28,7 +28,7 @@ from isaaclab_logistics_vla.utils.path_utils import *
 class BaseOrderCommandTerm(CommandTerm):
     cfg: OrderCommandTermCfg
 
-    def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv,is_multi_target:bool):
+    def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv,is_multi_target:bool = False):
         super().__init__(cfg, env)
 
         self.env = env
@@ -91,8 +91,8 @@ class BaseOrderCommandTerm(CommandTerm):
         self.order_completion = torch.zeros(
             (self.num_envs, self.num_targets), dtype=torch.bool, device=self.device
         )
-
-        self.log_path = f"{get_logs_path()}/{int(time.time())}.jsonl"
+        self.eval_metrics = {}
+        self.log_path = f"{get_logs_path()}/{self.__str__()}_{int(time.time())}.jsonl"
         
         # 确保目录存在
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
@@ -183,9 +183,9 @@ class BaseOrderCommandTerm(CommandTerm):
                 
                 current_global_idx += 1
 
-    def __str__(self) -> str: 
-        msg = f"该次任务共有{self.num_targets}笔订单，{self.num_objects}个SKU"
-        return msg
+    @abstractmethod
+    def __str__(self) -> str:     #当前任务的名称
+        pass
     
     def _resample_command(self, env_ids: Sequence[int]):
         self.target_need_sku_num[env_ids] = -1
@@ -478,17 +478,6 @@ class BaseOrderCommandTerm(CommandTerm):
             is_failed[:, i] |= (z_pos < 0.3)
 
         return is_failed
-    
-    # def compute_step_reward(self) -> torch.Tensor:
-    #     # 计算当前与目标的“绝对误差” (N, Targets, SKUs) -> (N,)
-    #     curr_error = torch.abs(self.target_need_sku_num - self.target_contain_sku_num).sum(dim=(1, 2))
-    #     # 计算上一帧的“绝对误差”
-    #     last_error = torch.abs(self.target_need_sku_num - self.last_target_contain_sku_num).sum(dim=(1, 2))
-
-    #     progress = last_error - curr_error
-    #     reward_progress = progress.float() * 5.0
-
-
 
     def _update_metrics(self):
         # 将上一步的状态备份
@@ -500,9 +489,17 @@ class BaseOrderCommandTerm(CommandTerm):
         
 
     def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, float]:
-        if(env_ids != None):
-            #self._update_assign_metrics(env_ids)
-            #self._update_spawn_metrics(env_ids)
+        if env_ids is None:
+            # 如果是 None (全局初始化)，直接显式地生成所有环境的 ID 列表
+            env_ids = list(range(self.num_envs))
+
+        if len(env_ids) > 0 and self.env.episode_length_buf[env_ids][0]>1:    #不是最初初始化的reset
+            if 'episode_physics_steps' not in self.eval_metrics:
+                self.eval_metrics['episode_physics_steps'] = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+            self.eval_metrics['episode_physics_steps'][env_ids] = self.env.episode_length_buf[env_ids].float()
+            self._compute_total_metrics(env_ids)
+
+            # self._update_spawn_metrics(env_ids)
             self._save_dynamic_metrics(env_ids)
         info = super().reset(env_ids)
 
@@ -515,8 +512,6 @@ class BaseOrderCommandTerm(CommandTerm):
         self.last_target_contain_sku_num[env_ids] = self.target_contain_sku_num[env_ids].clone()
 
         return info
-
-
 
     def _update_target_states(self):
         """
@@ -558,11 +553,6 @@ class BaseOrderCommandTerm(CommandTerm):
 
                 # 将统计结果直接赋值给记录张量对应的切片位置
                 self.target_contain_sku_num[:, target_idx, sku_idx] = count_in_target
-
-
-    @abstractmethod
-    def _update_assign_metrics(self,env_ids: Sequence[int] | None = None):
-        raise NotImplementedError
     
     @abstractmethod
     def _update_spawn_metrics(self,env_ids: Sequence[int] | None = None):
@@ -572,32 +562,144 @@ class BaseOrderCommandTerm(CommandTerm):
         if len(env_ids) == 0:
             return
         
-        extracted_data = {}
+        def _slice_nested_dict(d:dict, target_id):
+            sliced_dict = {}
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    # 如果还是字典，继续往里钻
+                    sliced_dict[k] = _slice_nested_dict(v, target_id)
+                elif isinstance(v, torch.Tensor):
+                    # 找到 Tensor 了！直接切片，并转为普通 Python 数据给 JSON 用
+                    sliced_dict[k] = v[target_id].tolist()
+                else:
+                    # 如果是普通的标量（如 int, float），直接照抄
+                    sliced_dict[k] = v
+            return sliced_dict
+        
         ids_list = env_ids.tolist()
-        num_resets = len(ids_list)
-
-        for key, value in self.metrics.items():
-            # 防御性编程：确保只处理 Tensor 类型
-            if isinstance(value, torch.Tensor):
-                # .tolist() 会自动把 GPU 数据拉回 CPU 并转为 Python 浮点数/列表
-                # 如果 value 是 (N, 3)，这里就会变成 [[x,y,z], [x,y,z]...]，JSON 也能存
-                extracted_data[key] = value[env_ids].tolist()
 
         with open(self.log_path, "a", encoding='utf-8') as f:
-            for i in range(num_resets):
-                # 1. 构建基础信息
-                row_record = {
-                    "timestamp": time.time(),
-                    "env_id": ids_list[i],
+            for env_id in ids_list:
+                row_record = _slice_nested_dict(self.eval_metrics, env_id)
+
+                row_record["timestamp"] = time.time()
+                row_record["env_id"] = env_id
+
+                f.write(json.dumps(row_record) + "\n")
+
+    def _init_episode_metrics_structure(self):
+        """仅仅在第一次被调用时，构建嵌套字典和底层的 Tensor 容器"""
+        if "overall" in self.eval_metrics:
+            return
+
+        device = self.device
+        N = self.num_envs
+
+        # ==========================
+        # 1. 整体完成情况 (Overall)
+        # ==========================
+        self.eval_metrics["overall"] = {
+            "total_orders": torch.zeros(N, dtype=torch.long, device=device),
+            "completed_orders": torch.zeros(N, dtype=torch.long, device=device),
+            "total_needed_items": torch.zeros(N, dtype=torch.long, device=device),
+            "correct_items": torch.zeros(N, dtype=torch.long, device=device),
+            "correct_ratio": torch.zeros(N, dtype=torch.float32, device=device),
+            "missing_items": torch.zeros(N, dtype=torch.long, device=device),
+            "missing_ratio": torch.zeros(N, dtype=torch.float32, device=device),
+            "extra_items": torch.zeros(N, dtype=torch.long, device=device),
+            "extra_ratio": torch.zeros(N, dtype=torch.float32, device=device),
+        }
+
+        # ==========================
+        # 2. 分订单完成情况 (Per Order)
+        # ==========================
+        self.eval_metrics["orders"] = {}
+        for t in range(self.num_targets):
+            order_key = f"order_{t}"
+            self.eval_metrics["orders"][order_key] = {
+                "total_need": torch.zeros(N, dtype=torch.long, device=device),
+                "fulfilled_need": torch.zeros(N, dtype=torch.long, device=device),
+                "missing": torch.zeros(N, dtype=torch.long, device=device),
+                "extra": torch.zeros(N, dtype=torch.long, device=device),
+                "skus": {}
+            }
+            # 3. 按 SKU 区分的小字典
+            for s, sku_name in enumerate(self.sku_names):
+                self.eval_metrics["orders"][order_key]["skus"][sku_name] = {
+                    "need": torch.zeros(N, dtype=torch.long, device=device),
+                    "contain": torch.zeros(N, dtype=torch.long, device=device),
                 }
 
-                # 2. 动态注入 metrics
-                for key, val_list in extracted_data.items():
-                    # val_list[i] 就是第 i 个被重置的环境对应的 metric 值
-                    row_record[key] = val_list[i]
+    def _compute_total_metrics(self, env_ids):
+        """在 reset() 拦截阶段调用，计算这局的最终得分表现"""
+        self._init_episode_metrics_structure()
 
-                # 3. 写入文件
-                f.write(json.dumps(row_record) + "\n")
+        # 1. 取出本次需要计算的环境的切片 (E, T, S)
+        # E=len(env_ids), T=num_targets, S=num_skus
+        need = self.target_need_sku_num[env_ids]
+        contain = self.target_contain_sku_num[env_ids]
+
+        order_mask = (need != -1).any(dim=-1)
+        need = torch.where(need == -1, torch.zeros_like(need), need)
+        contain = torch.where(need == -1, torch.zeros_like(contain), contain)
+        # ==========================================
+        # 核心矩阵运算 (数学逻辑极度严密)
+        # ==========================================
+        # 1. 正确放入的数量 = min(需要的, 实际有的)
+        correct = torch.minimum(need, contain)  # (E, T, S)
+        
+        # 2. 漏掉的数量 = max(0, 需要的 - 实际有的)
+        missing = torch.clamp(need - contain, min=0)  # (E, T, S)
+        
+        # 3. 多放/错放的数量 = max(0, 实际有的 - 需要的)
+        extra = torch.clamp(contain - need, min=0)  # (E, T, S)
+
+        # --- 按订单 (Target) 维度聚合 (E, T) ---
+        order_need = need.sum(dim=-1)
+        order_correct = correct.sum(dim=-1)
+        order_missing = missing.sum(dim=-1)
+        order_extra = extra.sum(dim=-1)
+        
+        # 定义“完美完成”的订单：没有漏掉的，也没有多余错放的
+        is_order_completed = (order_missing == 0) & (order_extra == 0) & order_mask
+
+        # --- 整体 (Overall) 维度聚合 (E,) ---
+        total_need_env = order_need.sum(dim=-1)
+        total_correct_env = order_correct.sum(dim=-1)
+        total_missing_env = order_missing.sum(dim=-1)
+        total_extra_env = order_extra.sum(dim=-1)
+        completed_orders_env = is_order_completed.long().sum(dim=-1)
+
+        # 为了计算比例，防止除以 0（如果某个环境本身就没有需求）
+        denom = torch.clamp(total_need_env, min=1).float()
+
+        # ==========================================
+        # 写入指标字典
+        # ==========================================
+        # 整体
+        ov_metrics = self.eval_metrics["overall"]
+        ov_metrics["total_orders"][env_ids] = self.num_targets
+        ov_metrics["completed_orders"][env_ids] = completed_orders_env
+        ov_metrics["total_needed_items"][env_ids] = total_need_env
+        ov_metrics["correct_items"][env_ids] = total_correct_env
+        ov_metrics["correct_ratio"][env_ids] = total_correct_env.float() / denom
+        ov_metrics["missing_items"][env_ids] = total_missing_env
+        ov_metrics["missing_ratio"][env_ids] = total_missing_env.float() / denom
+        ov_metrics["extra_items"][env_ids] = total_extra_env
+        ov_metrics["extra_ratio"][env_ids] = total_extra_env.float() / denom
+
+        # 分订单与分 SKU
+        for t in range(self.num_targets):
+                order_dict = self.eval_metrics["orders"][f"order_{t}"]
+                order_dict["total_need"][env_ids] = order_need[:, t]
+                order_dict["fulfilled_need"][env_ids] = order_correct[:, t]
+                order_dict["missing"][env_ids] = order_missing[:, t]
+                order_dict["extra"][env_ids] = order_extra[:, t]
+
+                for s, sku_name in enumerate(self.sku_names):
+                    sku_dict = order_dict["skus"][sku_name]
+                    sku_dict["need"][env_ids] = need[:, t, s]
+                    sku_dict["contain"][env_ids] = contain[:, t, s]
 
     @abstractmethod
     def _update_command(self):
