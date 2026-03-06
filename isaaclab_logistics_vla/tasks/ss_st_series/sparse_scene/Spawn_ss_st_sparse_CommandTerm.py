@@ -24,7 +24,7 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         #---障碍物兼容初始化---
-        self.obstacle_names = getattr(cfg, "obstacles", [])
+        self.obstacle_names = getattr(cfg, "obstacles", []) or []
         if self.obstacle_names:
             self.obstacle_assets = [env.scene[name] for name in self.obstacle_names if name in env.scene.keys()]
             self.has_obstacles = True
@@ -99,42 +99,47 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
 
             #---第3步：处理纯干扰物SKU(这类物品订单完全不需要)---
             for sku_idx in distractor_only_sku_indices:
+                if slots_used >= max_slots:
+                    break       #槽位满了就停止塞入纯干扰物
+
                 sku_name = self.sku_names[sku_idx]
                 global_indices = self.sku_to_indices[sku_name]
                 
                 max_avail = min(len(global_indices), m_max_per_sku)
-                if max_avail < 1:
+                max_can_spawn = min(max_avail, max_slots - slots_used)
+                if max_can_spawn < 1:
                     continue
                 
                 #这里不需要改target_need_sku_num，因为它初始化就是0，代表不需要
                 #随机生成1到Max个纯干扰物
-                n_spawn = torch.randint(1, max_avail + 1, (1,)).item()
-                selected_objs = torch.tensor(global_indices)[torch.randperm(len(global_indices))[:n_spawn]]
+                n_spawn = torch.randint(1, max_can_spawn + 1, (1,)).item()
+                slots_used += n_spawn
                 
+                selected_objs = torch.tensor(global_indices)[torch.randperm(len(global_indices))[:n_spawn]]
                 self.obj_to_source_id[env_id, selected_objs] = 0    #同样放在0号原料箱
 
         #---第4步：更新全局活跃物体掩码---
         #只要SourceID不是-1，就说明这个物体在本局游戏中出场了(无论是目标还是干扰)
         self.is_active_mask[env_ids] = (self.obj_to_source_id[env_ids] != -1)
 
-        #此处彻底废弃了self.is_target_mask，因为现在的指标全靠target_need_sku_num来算了
-
     def _spawn_items_in_source_boxes(self, env_ids: Sequence[int]):
         """
             根据_assign_objects_boxes决定好的SourceID，将物体物理放置到对应的箱子槽位中。
+            兼容障碍物：根据是否有障碍物动态选择可用槽位。
         """
         if not isinstance(env_ids, torch.Tensor):
             env_ids = torch.tensor(env_ids, device=self.device)
         num_envs = len(env_ids)
 
-        #---第1步：清场---
-        #把所有物体强制瞬移到天上/地下很远的地方，防止旧物体的碰撞箱影响新物体的生成
+        #---第1步：清场与零速化---
+        zero_vel = torch.zeros((num_envs, 6), device=self.device)
         for obj_asset in self.object_assets:
             far_position = torch.tensor([[100.0, 100.0, -50.0]], device=self.device).repeat(num_envs, 1)
             quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=self.device).repeat(num_envs, 1)
             set_asset_position(self.env, env_ids, obj_asset, far_position, quat)
+            if hasattr(obj_asset, "write_root_velocity_to_sim"):
+                obj_asset.write_root_velocity_to_sim(zero_vel, env_ids=env_ids)
 
-        #辅助函数：根据物品名称获取预设的物理尺寸和旋转角度
         def get_params_and_dims(obj_name):
             if "cracker" in obj_name: 
                 p = CRACKER_BOX_PARAMS
@@ -149,80 +154,93 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
             real_x, real_y, real_z = get_rotated_aabb_size(raw_x, raw_y, raw_z, ori_deg, device=self.device)
             return real_x, real_y, real_z, ori_deg
             
-        #箱子的长宽参数
         box_x, box_y = WORK_BOX_PARAMS['X_LENGTH'], WORK_BOX_PARAMS['Y_LENGTH']
-        #把箱子划分为3行x2列的6个格子，计算每个格子的尺寸
         cell_x, cell_y = box_x / 3.0, box_y / 2.0
         
-        #预先计算好6个格子的中心点坐标(基于箱子中心的相对坐标)
         anchors = torch.tensor([
             [-box_x/3, -box_y/4], [0, -box_y/4], [box_x/3, -box_y/4],
             [-box_x/3,  box_y/4], [0,  box_y/4], [box_x/3,  box_y/4]
         ], device=self.device)
 
-        #---第2步：分配槽位---
-        #为每个环境生成一个0~5的随机排列序列 (例如[3, 0, 5, 1, 2, 4])，用于决定物品占据哪个格子
-        #argsort的作用是将随机数排序并返回索引，从而巧妙地获得不重复的乱序列表
-        slot_perms = torch.rand(num_envs, 6, device=self.device).argsort(dim=1)
+        #---第2步：处理大障碍物(如果存在)---
+        if self.has_obstacles:
+            scale_range = (0.4, 1.0)
+            for obs_asset in self.obstacle_assets:
+                #A. 随机化Scale并写入仿真
+                rand_scales = torch.rand((num_envs, 1), device=self.device) * (scale_range[1] - scale_range[0]) + scale_range[0]
+                rand_scales = rand_scales.repeat(1, 3) 
+                if hasattr(obs_asset, "write_root_scale_to_sim"):
+                    obs_asset.write_root_scale_to_sim(rand_scales, env_ids=env_ids)
+                
+                #B. 计算缩放后的实际物理高度
+                obs_cfg = obs_asset.cfg.spawn
+                raw_size_z = obs_cfg.size[2]
+                current_scale_z = rand_scales[:, 2] 
+                obs_z = (raw_size_z * current_scale_z / 2.0) + 0.015 + 0.019
+                
+                #C. 设置固定位置
+                obs_center_anchor = anchors[self.OBSTACLE_CENTER_INDEX]
+                obs_rel_pos = torch.zeros((num_envs, 3), device=self.device)
+                obs_rel_pos[:, 0] = obs_center_anchor[0]
+                obs_rel_pos[:, 1] = obs_center_anchor[1]
+                obs_rel_pos[:, 2] = obs_z
+                obs_rel_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).repeat(num_envs, 1)
+
+                set_asset_relative_position(
+                    self.env, env_ids, obs_asset, self.source_box_assets[0], 
+                    obs_rel_pos, obs_rel_quat
+                )
+                if hasattr(obs_asset, "write_root_velocity_to_sim"):
+                    obs_asset.write_root_velocity_to_sim(zero_vel, env_ids=env_ids)
+
+        #---第3步：处理普通物品---
+        #生成槽位序列池。根据是否有障碍物，长度可能是3(左列)或6(全部)
+        item_slots_base = torch.tensor(self.ITEM_COL_INDICES, device=self.device)
+        #为每个环境生成独享的乱序可用槽位
+        env_item_perms = torch.stack([item_slots_base[torch.randperm(len(self.ITEM_COL_INDICES))] for _ in range(num_envs)])
         
-        #累计求和(cumsum)：为每个环境里即将生成的物品打上序号(0, 1, 2...)
-        #这个序号将作为提取slot_perms的索引，保证同一个环境里的物品不会拿到相同的格子
         active_ranks = (self.obj_to_source_id[env_ids] != -1).long().cumsum(dim=1) - 1
 
-        #---第3步：逐个物体进行放置---
         for obj_idx, obj_asset in enumerate(self.object_assets):
+            assigned_mask = (self.obj_to_source_id[env_ids, obj_idx] != -1)
+            if not assigned_mask.any():
+                continue     
+
             item_x, item_y, item_z, item_ori = get_params_and_dims(self.object_names[obj_idx])
-            assigned_box_indices = self.obj_to_source_id[env_ids, obj_idx]
+            active_env_ids = env_ids[assigned_mask]
+            num_active = len(active_env_ids)
+            
+            relative_quat = euler_to_quat_isaac(item_ori[0],item_ori[1],item_ori[2]).repeat(num_active, 1)
+            
+            #查表：提取分配的槽位锚点
+            current_ranks = active_ranks[assigned_mask, obj_idx]
+            current_slots = env_item_perms[assigned_mask, current_ranks]
+            batch_anchors = anchors[current_slots]
 
-            for box_idx, box_asset in enumerate(self.source_box_assets):
-                #筛出本局中确实需要放在当前box_idx里的物品
-                mask = (assigned_box_indices == box_idx) 
-                if not mask.any(): continue     #没有的话就看下一个箱子
+            margin_x = max(0, (cell_x - item_x) / 2.0 - 0.01)
+            margin_y = max(0, (cell_y - item_y) / 2.0 - 0.01)
 
-                active_env_ids = env_ids[mask]
-                num_active = len(active_env_ids)
-                
-                #转换欧拉角为四元数
-                relative_quat = euler_to_quat_isaac(item_ori[0],item_ori[1],item_ori[2]).repeat(num_active, 1)
-                
-                #查表：当前物品是该环境里的第几个生成的？根据这个序号去槽位数组里拿具体的格子ID
-                current_ranks = active_ranks[mask, obj_idx]
-                current_slots = slot_perms[mask].gather(1, current_ranks.unsqueeze(1)).squeeze(1)    
-                # 拿到格子的中心点相对坐标
-                batch_anchors = anchors[current_slots]
+            rand_x = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_x
+            rand_y = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_y
+            
+            z_pos = (item_z / 2.0) + 0.015 + 0.02 
 
-                #---添加随机扰动(Jitter)---
-                #为了防止物品永远呆在格子正中央导致过拟合，我们加入随机偏移
-                #容差margin确保即使偏移，物品边缘也不会超出当前格子边界(减去0.01是留出安全缝隙)
-                margin_x = max(0, (cell_x - item_x) / 2.0 - 0.01)
-                margin_y = max(0, (cell_y - item_y) / 2.0 - 0.01)
+            relative_pos = torch.stack([
+                batch_anchors[:, 0] + rand_x,
+                batch_anchors[:, 1] + rand_y,
+                torch.full((num_active,), z_pos, device=self.device)
+            ], dim=-1)
 
-                #生成-1到1之间的随机数并乘以容差
-                rand_x = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_x
-                rand_y = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_y
-                
-                #Z轴高度计算：物品高度的一半+箱子底厚度(0.015)+空气垫高度(0.02)
-                #增加0.02的空气垫是为了防止刚体穿模瞬间产生巨大的排斥力把物品弹飞
-                z_pos = (item_z / 2.0) + 0.015 + 0.02 
-
-                #拼接最终的三维相对坐标
-                relative_pos = torch.stack([
-                    batch_anchors[:, 0] + rand_x,
-                    batch_anchors[:, 1] + rand_y,
-                    torch.full((num_active,), z_pos, device=self.device)
-                ], dim=-1)
-
-                #执行底层放置命令
-                set_asset_relative_position(
-                    env=self.env, env_ids=env_ids,
-                    target_asset=obj_asset, reference_asset=box_asset,
-                    relative_pos=relative_pos, relative_quat=relative_quat
-                )
-                
-                if hasattr(obj_asset, "reset"):
-                    obj_asset.reset(env_ids=active_env_ids)
-                if hasattr(obj_asset, "write_root_velocity_to_sim"):
-                    obj_asset.write_root_velocity_to_sim(torch.zeros((num_active, 6), device=self.device), env_ids=active_env_ids)
+            set_asset_relative_position(
+                env=self.env, env_ids=env_ids,
+                target_asset=obj_asset, reference_asset=self.source_box_assets[0],
+                relative_pos=relative_pos, relative_quat=relative_quat
+            )
+            
+            if hasattr(obj_asset, "reset"):
+                obj_asset.reset(env_ids=active_env_ids)
+            if hasattr(obj_asset, "write_root_velocity_to_sim"):
+                obj_asset.write_root_velocity_to_sim(torch.zeros((num_active, 6), device=self.device), env_ids=active_env_ids)
 
     def _update_spawn_metrics(self): 
         pass
@@ -234,4 +252,5 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
         pass
 
     def __str__(self) -> str:
-        return "ss_st_sparse"
+        has_obs = getattr(self, "has_obstacles", False)
+        return "ss_st_sparse_with_obstacles" if has_obs else "ss_st_sparse"

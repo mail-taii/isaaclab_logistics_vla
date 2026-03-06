@@ -4,7 +4,6 @@ from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 
 from .Spawn_ss_st_sparse_CommandTermCfg import Spawn_ss_st_sparse_CommandTermCfg
-from .Spawn_ss_st_sparse_CommandTermCfg import Spawn_ss_st_sparse_with_obstacles_CommandTermCfg
 
 ASSET_NAME = "robot"
 BODY_NAME = "base_link_underpan"
@@ -27,7 +26,7 @@ class Spawn_ss_st_sparse_CommandsCfg:
 class Spawn_ss_st_sparse_with_obstacles_CommandsCfg:
     """Command terms for the MDP (With Obstacles)."""
 
-    order_info = Spawn_ss_st_sparse_with_obstacles_CommandTermCfg(
+    order_info = Spawn_ss_st_sparse_CommandTermCfg(
         asset_name = ASSET_NAME,
         body_name = BODY_NAME,
         # 3个物品占据一排

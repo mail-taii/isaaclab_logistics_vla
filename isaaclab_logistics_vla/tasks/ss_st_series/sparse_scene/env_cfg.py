@@ -18,15 +18,10 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from .scene_cfg import Spawn_ss_st_sparse_SceneCfg
 from .observation_cfg import ObservationsCfg
-from .command_cfg import Spawn_ss_st_sparse_CommandsCfg
 from .reward_cfg import Spawn_ss_st_sparse_RewardCfg
 from .event_cfg import Spawn_ss_st_sparse_EventCfg
-
-from .scene_cfg import Spawn_ss_st_sparse_with_obstacles_SceneCfg
-from .observation_cfg import ObservationsCfg
+from .command_cfg import Spawn_ss_st_sparse_CommandsCfg
 from .command_cfg import Spawn_ss_st_sparse_with_obstacles_CommandsCfg
-from .reward_cfg import Spawn_ss_st_sparse_with_obstacles_RewardCfg
-from .event_cfg import Spawn_ss_st_sparse_with_obstacles_EventCfg
 
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks import mdp
@@ -54,7 +49,7 @@ class CurriculumCfg:
 @register.add_env_configs('Spawn_ss_st_sparse_EnvCfg')
 @configclass
 class Spawn_ss_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the lifting environment."""
+    """Configuration for the lifting environment (No Obstacles)."""
     
     scene: Spawn_ss_st_sparse_SceneCfg = Spawn_ss_st_sparse_SceneCfg(num_envs=1, env_spacing=7.0)
     
@@ -67,10 +62,7 @@ class Spawn_ss_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        """Post initialization."""
         self.decimation = 2
-        
-        # 【核心修改】将原本的 10 秒延长至 20 秒，给机器人足够的时间连续搬运多个物品
         self.episode_length_s = 20.0 
         
         self.sim.dt = 0.01  # 100Hz
@@ -84,25 +76,25 @@ class Spawn_ss_st_sparse_EnvCfg(ManagerBasedRLEnvCfg):
 @register.add_env_configs('Spawn_ss_st_sparse_with_obstacles_EnvCfg')
 @configclass
 class Spawn_ss_st_sparse_with_obstacles_EnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the lifting environment (With Obstacles)."""
     
-    # Scene settings (确保 scene_cfg 中也有对应带后缀的类)
-    scene: Spawn_ss_st_sparse_with_obstacles_SceneCfg = Spawn_ss_st_sparse_with_obstacles_SceneCfg(num_envs=2, env_spacing=7.0)
+    scene: Spawn_ss_st_sparse_SceneCfg = Spawn_ss_st_sparse_SceneCfg(num_envs=2, env_spacing=7.0)
     
-    # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions = register.load_action_configs('realman_franka_ee_actionscfg')()
+    
     commands: Spawn_ss_st_sparse_with_obstacles_CommandsCfg = Spawn_ss_st_sparse_with_obstacles_CommandsCfg()
     
-    # MDP settings
-    rewards: Spawn_ss_st_sparse_with_obstacles_RewardCfg = Spawn_ss_st_sparse_with_obstacles_RewardCfg()
+    rewards: Spawn_ss_st_sparse_RewardCfg = Spawn_ss_st_sparse_RewardCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-    events: Spawn_ss_st_sparse_with_obstacles_EventCfg = Spawn_ss_st_sparse_with_obstacles_EventCfg()
+    events: Spawn_ss_st_sparse_EventCfg = Spawn_ss_st_sparse_EventCfg()
+    
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        """Post initialization."""
         self.decimation = 2
-        self.episode_length_s = 4.0         # 增加时长，考虑避障路径更长
+        
+        self.episode_length_s = 20.0         
         
         self.sim.dt = 0.01      # 100Hz
         self.sim.render_interval = self.decimation
