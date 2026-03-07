@@ -213,6 +213,10 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                 remaining -= 1
 
             # --- 4. 激活订单需求物品、写 target_need_sku_num ---
+            # 先将 order_0 整行置 0（标记"此订单存在，各 SKU 默认需求为 0"），
+            # 其余 order 保持 -1（"订单不存在"）。随后逐 SKU 覆盖具体需求量。
+            self.target_need_sku_num[env_id_val, 0, :] = 0
+
             sku_obj_groups = []
             slots_used = 0
 
@@ -407,13 +411,33 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
 
     def _update_spawn_metrics(self):
         """
-        堆叠加权得分：统计所有在 stack_layout 中的物品。
-
-        权重 = stack_size - position（底层 = stack_size，顶层 = 1）
-        stack_weighted_score = Σ(weight × success) / Σ(weight)
-
-        成功判定：object_states 落在目标箱区间 (num_sources, num_sources + num_targets]
+        利用 target_need_sku_num / target_contain_sku_num 计算与基类一致的 Metrics，
+        并在此基础上增加堆叠加权得分（仅统计订单物品，底层权重大于顶层）。
         """
+        target_idx = 0
+
+        # -----------------------------------------------------------------
+        # 1. 需求矩阵与实际包含矩阵
+        # -----------------------------------------------------------------
+        target_needs = self.target_need_sku_num[:, target_idx, :]
+        actual_in_target = self.target_contain_sku_num[:, target_idx, :]
+
+        correct_picks = torch.minimum(actual_in_target, target_needs).sum(dim=1)
+        wrong_picks = torch.clamp(actual_in_target - target_needs, min=0).sum(dim=1)
+        dropped_count = (self.object_states == 10).sum(dim=1)
+        total_needed = target_needs.sum(dim=1)
+
+        completion_rate = torch.where(
+            total_needed > 0,
+            correct_picks.float() / total_needed.float(),
+            torch.tensor(1.0, device=self.device),
+        )
+        is_success = (correct_picks == total_needed) & (wrong_picks == 0)
+
+        # -----------------------------------------------------------------
+        # 2. 堆叠加权得分：仅统计订单物品，权重 = stack_size - position
+        #    成功判定：object_states 落在目标箱区间 (num_sources, num_sources + num_targets]
+        # -----------------------------------------------------------------
         current_states = self.object_states
         target_state_min = self.num_sources + 1
         target_state_max = self.num_sources + self.num_targets
@@ -432,6 +456,8 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                         obj_idx = layout[stack_idx, pos].item()
                         if obj_idx == -1:
                             break
+                        if not self.is_order_mask[env_id, obj_idx]:
+                            continue
                         weight = float(stack_size - pos)
                         total_weight[env_id] += weight
                         state_val = current_states[env_id, obj_idx].item()
@@ -439,67 +465,19 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                             weighted_success[env_id] += weight
 
         valid = total_weight > 0
-        score = torch.zeros_like(weighted_success)
-        score[valid] = weighted_success[valid] / total_weight[valid]
-        self.eval_metrics["stack_weighted_score"] = score
+        stack_weighted_score = torch.zeros(self.num_envs, device=self.device)
+        stack_weighted_score[valid] = weighted_success[valid] / total_weight[valid]
 
-    # ------------------------------------------------------------------ #
-    #                       总得分计算                                     #
-    # ------------------------------------------------------------------ #
-
-    def compute_total_reward(self, env_ids) -> torch.Tensor:
-        """
-        计算环境完全结束后的总得分（仅统计订单物品）。
-
-        堆叠场景中越底层的物品权重越高：
-            权重 = stack_size - position（底层 = stack_size，顶层 = 1）
-
-        仅当订单物品的 object_states 落在目标箱区间时记为成功得分。
-        冗余物品不参与得分计算。
-
-        Returns:
-            (len(env_ids),) 每个环境的总得分，值域 [0, 1]
-        """
-        if not isinstance(env_ids, torch.Tensor):
-            env_ids = torch.tensor(env_ids, device=self.device)
-
-        current_states = self.object_states
-        target_state_min = self.num_sources + 1
-        target_state_max = self.num_sources + self.num_targets
-
-        scores = torch.zeros(len(env_ids), device=self.device)
-
-        for i, env_id in enumerate(env_ids):
-            eid = env_id.item() if isinstance(env_id, torch.Tensor) else int(env_id)
-
-            weighted_success = 0.0
-            total_weight = 0.0
-
-            for src_idx in range(self.num_sources):
-                layout = self.stack_layout[eid, src_idx]
-                for stack_idx in range(layout.shape[0]):
-                    stack_size = (layout[stack_idx] != -1).sum().item()
-                    if stack_size == 0:
-                        continue
-                    for pos in range(stack_size):
-                        obj_idx = layout[stack_idx, pos].item()
-                        if obj_idx == -1:
-                            break
-
-                        if not self.is_order_mask[eid, obj_idx]:
-                            continue
-
-                        weight = float(stack_size - pos)
-                        total_weight += weight
-
-                        state_val = current_states[eid, obj_idx].item()
-                        if target_state_min <= state_val <= target_state_max:
-                            weighted_success += weight
-
-            if total_weight > 0:
-                scores[i] = weighted_success / total_weight
-
-        return scores
+        self.metrics = {
+            "completion_rate": completion_rate,
+            "wrong_pick_count": wrong_picks,
+            "dropped_count": dropped_count,
+            "is_success": is_success.float(),
+            "correct_picks": correct_picks,
+            "total_needed": total_needed,
+            "stack_weighted_score": stack_weighted_score,
+        }
+        return self.metrics
 
     # ------------------------------------------------------------------ #
     #                       接口方法                                       #
