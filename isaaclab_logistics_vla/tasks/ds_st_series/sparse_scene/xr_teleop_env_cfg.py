@@ -1,15 +1,14 @@
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.devices.openxr import XrCfg
-from isaaclab.devices.openxr.openxr_device import OpenXRDevice, OpenXRDeviceCfg
-from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeterCfg
-from isaaclab.devices.openxr.retargeters.manipulator.se3_rel_retargeter import Se3RelRetargeterCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.utils import configclass
 
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.utils.util import euler_to_quat_isaac
+from isaaclab_logistics_vla.configs.teleop_configs.realman_xr_handtracking import (
+    build_realman_xr_handtracking_devices_cfg,
+)
 
 from .env_cfg import Spawn_ds_st_sparse_EnvCfg
 
@@ -91,44 +90,6 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
         # XR 下不建议外置相机；这里不强制移除（你的 benchmark 可能依赖相机观测），先保持原观测配置。
         # 若后续出现 XR + camera 冲突，再在脚本层面按需 remove_camera_configs。
 
-        self.teleop_devices = DevicesCfg(
-            devices={
-                "handtracking": OpenXRDeviceCfg(
-                    retargeters=[
-                        # 左手 → 左臂末端增量
-                        Se3RelRetargeterCfg(
-                            bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,
-                            # 更直觉：保留手腕旋转，不强行抹掉 XY 旋转
-                            zero_out_xy_rotation=False,
-                            use_wrist_rotation=True,
-                            use_wrist_position=True,
-                            # 缩放调小，避免“轻微手抖→末端大跳”
-                            delta_pos_scale_factor=3.0,
-                            delta_rot_scale_factor=3.0,
-                            sim_device=self.sim.device,
-                        ),
-                        GripperRetargeterCfg(
-                            bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,
-                            sim_device=self.sim.device,
-                        ),
-                        # 右手 → 右臂末端增量
-                        Se3RelRetargeterCfg(
-                            bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT,
-                            zero_out_xy_rotation=False,
-                            use_wrist_rotation=True,
-                            use_wrist_position=True,
-                            delta_pos_scale_factor=3.0,
-                            delta_rot_scale_factor=3.0,
-                            sim_device=self.sim.device,
-                        ),
-                        GripperRetargeterCfg(
-                            bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT,
-                            sim_device=self.sim.device,
-                        ),
-                    ],
-                    sim_device=self.sim.device,
-                    xr_cfg=self.xr,
-                )
-            }
-        )
+        # Teleop devices：使用 realman 专属配置（与场景解耦，便于复用到其它任务场景）
+        self.teleop_devices = build_realman_xr_handtracking_devices_cfg(sim_device=self.sim.device, xr_cfg=self.xr)
 
