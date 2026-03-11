@@ -9,6 +9,7 @@ from isaaclab.utils import configclass
 
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
+from isaaclab_logistics_vla.utils.util import euler_to_quat_isaac
 
 from .env_cfg import Spawn_ds_st_sparse_EnvCfg
 
@@ -72,12 +73,11 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
     # 覆盖动作配置
     actions = RealmanFrankaEE_XrTeleopActionsCfg()
 
-    # XR 视角：AVP 正前方即顶视（与 realman top_camera 一致：俯视工作区）
-    # anchor_rot: 绕 X 轴 180°，使场景「上」(sim Z) 对准头显「前方」(-Z)，正对头显即俯视
-    # 四元数 (w,x,y,z) 绕 X 轴 180° = (0, 1, 0, 0)
+    # XR 视角：固定为你在 UI 里调好的 /XRAnchor（更直觉）
+    # 来自你的截图：Translate=(1.0, 2.2, 0.0), Orient(XYZ degrees)=(-90, 30, 0)
     xr: XrCfg = XrCfg(
-        anchor_pos=(0.0, 0.0, -1.2),
-        anchor_rot=(0.0, 1.0, 0.0, 0.0),
+        anchor_pos=(1.0, 2.2, 0.0),
+        anchor_rot=euler_to_quat_isaac(r=-90, p=30, y=0, return_tensor=False),
         near_plane=0.15,
     )
 
@@ -98,11 +98,13 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
                         # 左手 → 左臂末端增量
                         Se3RelRetargeterCfg(
                             bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,
-                            zero_out_xy_rotation=True,
-                            use_wrist_rotation=False,
+                            # 更直觉：保留手腕旋转，不强行抹掉 XY 旋转
+                            zero_out_xy_rotation=False,
+                            use_wrist_rotation=True,
                             use_wrist_position=True,
-                            delta_pos_scale_factor=10.0,
-                            delta_rot_scale_factor=10.0,
+                            # 缩放调小，避免“轻微手抖→末端大跳”
+                            delta_pos_scale_factor=3.0,
+                            delta_rot_scale_factor=3.0,
                             sim_device=self.sim.device,
                         ),
                         GripperRetargeterCfg(
@@ -112,11 +114,11 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
                         # 右手 → 右臂末端增量
                         Se3RelRetargeterCfg(
                             bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT,
-                            zero_out_xy_rotation=True,
-                            use_wrist_rotation=False,
+                            zero_out_xy_rotation=False,
+                            use_wrist_rotation=True,
                             use_wrist_position=True,
-                            delta_pos_scale_factor=10.0,
-                            delta_rot_scale_factor=10.0,
+                            delta_pos_scale_factor=3.0,
+                            delta_rot_scale_factor=3.0,
                             sim_device=self.sim.device,
                         ),
                         GripperRetargeterCfg(
