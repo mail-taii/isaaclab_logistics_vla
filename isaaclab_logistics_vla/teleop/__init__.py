@@ -1,3 +1,5 @@
-# Standalone teleoperation module for isaaclab_logistics_vla.
-# Uses Bunny (bunny_teleop_server) as the teleop source; subscribes to ROS2 qpos topics
-# and drives the same Isaac Lab env used in evaluation.
+"""Teleoperation helpers for isaaclab_logistics_vla.
+
+当前推荐使用 CloudXR/OpenXR（Apple Vision Pro）遥操作链路，入口脚本见：
+`scripts/run_xr_teleop.py`。
+"""

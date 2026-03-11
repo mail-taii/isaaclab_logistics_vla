@@ -109,8 +109,7 @@ export XR_RUNTIME_JSON=/path/to/isaaclab/openxr/share/openxr/1/openxr_cloudxr.js
 
 你当前的 benchmark（isaaclab_logistics_vla）情况是：
 
-- **已有**：Bunny 遥操作（AVP → Bunny → ROS2 qpos → `run_bunny_teleop.py`），驱动的是 **realman + 你的任务场景**（如 `Spawn_ds_st_sparse_EnvCfg`）。
-- **Isaac XR 官方**：走的是 **CloudXR + OpenXR**，手部数据在 Isaac Lab 里通过 `OpenXRDevice` + Retargeter 直接驱动机器人，**不经过 ROS2**。
+- **Isaac XR 官方**：走的是 **CloudXR + OpenXR**，手部数据在 Isaac Lab 里通过 `OpenXRDevice` + Retargeter 直接驱动机器人。
 
 因此，若要在 **同一套 benchmark 场景**（realman、Spawn_ds_st 等）上使用 **Isaac XR Teleop Sample Client**，需要多做一步「桥接」：
 
@@ -124,11 +123,6 @@ export XR_RUNTIME_JSON=/path/to/isaaclab/openxr/share/openxr/1/openxr_cloudxr.js
    - 你的场景目前是 **realman 双臂 + 夹爪**（17 维动作），和官方 GR1 单臂/人形不同，需要：
      - 要么在 env_cfg 中为你的任务增加 `teleop_devices`，配置 `OpenXRDevice` 和适合 **双臂 realman** 的 Retargeter；  
      - 要么在 Isaac Lab 里查是否有现成的双臂/多臂手部 Retargeter 可复用，否则需要自己实现或适配一套「手部位姿 → realman 17 维动作」的映射。
-
-3. **和现有 Bunny 遥操作的关系**：
-   - Bunny：AVP → Bunny 客户端 → bunny_teleop_server → ROS2 → `run_bunny_teleop.py`（不经过 CloudXR）。
-   - Isaac XR：AVP 上的 App → CloudXR → Isaac Lab OpenXR → 同一套仿真场景。
-   - 两套可以并存：同一台 workstation 上，要么跑「Bunny + run_bunny_teleop」，要么跑「CloudXR + 新的 XR 遥操作脚本」，选一种方式驱动你的 benchmark 场景。
 
 **建议顺序**：  
 先按第三节用官方任务确认 AVP 与 CloudXR 正常；再在 isaaclab_logistics_vla 或 Isaac Lab 里新增一个「XR + 你的场景」的脚本，并逐步把 `teleop_devices` + Retargeter 接到 realman 上。

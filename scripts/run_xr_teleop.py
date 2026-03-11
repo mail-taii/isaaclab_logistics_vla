@@ -98,6 +98,32 @@ def main() -> None:
     # XR 手部遥操作设备（从 env_cfg.teleop_devices 中构造）
     from isaaclab.devices.teleop_device_factory import create_teleop_device
 
+    # 可选：运行时调参（不改代码）
+    # TELEOP_POS_SCALE / TELEOP_ROT_SCALE 会覆盖 Se3RelRetargeterCfg 的 delta_*_scale_factor
+    pos_scale_s = os.environ.get("TELEOP_POS_SCALE", "").strip()
+    rot_scale_s = os.environ.get("TELEOP_ROT_SCALE", "").strip()
+    if pos_scale_s or rot_scale_s:
+        try:
+            pos_scale = float(pos_scale_s) if pos_scale_s else None
+            rot_scale = float(rot_scale_s) if rot_scale_s else None
+        except ValueError:
+            pos_scale = rot_scale = None
+        if pos_scale is not None or rot_scale is not None:
+            try:
+                dev_cfg = env_cfg.teleop_devices.devices.get("handtracking", None)
+                if dev_cfg is not None and getattr(dev_cfg, "retargeters", None):
+                    for r in dev_cfg.retargeters:
+                        if pos_scale is not None and hasattr(r, "delta_pos_scale_factor"):
+                            r.delta_pos_scale_factor = pos_scale
+                        if rot_scale is not None and hasattr(r, "delta_rot_scale_factor"):
+                            r.delta_rot_scale_factor = rot_scale
+                    print(
+                        f"[XR Teleop] 已覆盖 retargeter scale: pos={pos_scale if pos_scale is not None else '(default)'} "
+                        f"rot={rot_scale if rot_scale is not None else '(default)'}"
+                    )
+            except Exception:
+                pass
+
     # 调试：若 AVP 点 Play 后仍无 START 回调，可设 TELEOP_FORCE_ACTIVE=1 强制开启遥操作，测试手部数据是否有输出
     teleoperation_active = os.environ.get("TELEOP_FORCE_ACTIVE", "").strip() in ("1", "true", "yes")
     if teleoperation_active:
@@ -137,6 +163,8 @@ def main() -> None:
     teleop_interface = create_teleop_device(args_cli.teleop_device, env_cfg.teleop_devices.devices, teleoperation_callbacks)
     print(f"[XR Teleop] Using teleop device: {teleop_interface}")
     print("[XR Teleop] 请在 AVP 上点击 Play 后再动手指，否则机器人不会跟随。")
+    if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
+        print("[XR Teleop] TELEOP_DEBUG_RAW=1：将打印 OpenXR 原始 wrist/palm 位姿变化（若可用）")
 
     env.reset()
     teleop_interface.reset()
@@ -166,7 +194,32 @@ def main() -> None:
                 if t - _last_debug_time[0] >= 2.0:
                     _last_debug_time[0] = t
                     an = float(action.abs().sum()) if action.numel() else 0.0
-                    print(f"[XR Teleop] active=1 action_sum_abs={an:.4f} (若始终≈0 则手部数据未到)")
+                    # 尝试拆分：两臂(前12维) + 两夹爪(后2维) 的绝对和
+                    arm_sum = float(action[:12].abs().sum()) if action.numel() >= 12 else 0.0
+                    grip_sum = float(action[12:14].abs().sum()) if action.numel() >= 14 else 0.0
+                    print(
+                        f"[XR Teleop] active=1 arm_sum_abs={arm_sum:.4f} grip_sum_abs={grip_sum:.4f} "
+                        f"total={an:.4f} (若 arm≈0 且 grip≈2，通常是手部位姿未进来，只剩夹爪默认值)"
+                    )
+                    # 可选：打印 raw wrist/palm 位姿是否在变化
+                    if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
+                        try:
+                            raw = teleop_interface._get_raw_data()  # type: ignore[attr-defined]
+                            # raw: {HAND_LEFT: {joint: pose7}, HAND_RIGHT: {...}, HEAD: pose7}
+                            def _joint_pos(d, name):
+                                p = d.get(name, None)
+                                if p is None:
+                                    return None
+                                return tuple(float(x) for x in p[:3])
+                            l = raw.get(getattr(teleop_interface, "TrackingTarget").HAND_LEFT, {})
+                            r = raw.get(getattr(teleop_interface, "TrackingTarget").HAND_RIGHT, {})
+                            lw = _joint_pos(l, "wrist")
+                            lp = _joint_pos(l, "palm")
+                            rw = _joint_pos(r, "wrist")
+                            rp = _joint_pos(r, "palm")
+                            print(f"[XR Teleop] raw left(wrist,palm)={lw},{lp} right(wrist,palm)={rw},{rp}")
+                        except Exception:
+                            pass
                 actions = action.repeat(env.num_envs, 1)
                 if action_dim is not None and actions.shape[1] < action_dim:
                     pad = torch.full(
