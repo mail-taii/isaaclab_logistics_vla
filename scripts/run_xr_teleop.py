@@ -220,6 +220,20 @@ def main() -> None:
                             print(f"[XR Teleop] raw left(wrist,palm)={lw},{lp} right(wrist,palm)={rw},{rp}")
                         except Exception:
                             pass
+                # Realman 专用：参考 lerobot-realman-vla 的 Vive→Robot 轴映射做一个可选后处理
+                # 映射矩阵默认 identity；若设 TELEOP_REALMAN_AXIS_MAP=lerobot 则使用 [-z,-x,+y]
+                axis_map = os.environ.get("TELEOP_REALMAN_AXIS_MAP", "").strip().lower()
+                if axis_map == "lerobot" and action.numel() >= 12:
+                    # 对两臂的 (dx,dy,dz) 和 (rx,ry,rz) 分别做同样轴映射
+                    def _map3(v: torch.Tensor) -> torch.Tensor:
+                        return torch.stack([-v[2], -v[0], v[1]])
+                    a = action.clone()
+                    a[0:3] = _map3(a[0:3])
+                    a[3:6] = _map3(a[3:6])
+                    a[6:9] = _map3(a[6:9])
+                    a[9:12] = _map3(a[9:12])
+                    action = a
+
                 actions = action.repeat(env.num_envs, 1)
                 if action_dim is not None and actions.shape[1] < action_dim:
                     pad = torch.full(
