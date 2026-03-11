@@ -76,8 +76,11 @@ def main() -> None:
     # XR 手部遥操作设备（从 env_cfg.teleop_devices 中构造）
     from isaaclab.devices.teleop_device_factory import create_teleop_device
 
+    # 调试：若 AVP 点 Play 后仍无 START 回调，可设 TELEOP_FORCE_ACTIVE=1 强制开启遥操作，测试手部数据是否有输出
+    teleoperation_active = os.environ.get("TELEOP_FORCE_ACTIVE", "").strip() in ("1", "true", "yes")
+    if teleoperation_active:
+        print("[XR Teleop] TELEOP_FORCE_ACTIVE=1，遥操作已强制开启（用于排查 Play 未生效）")
     should_reset = False
-    teleoperation_active = False  # XR 下默认 inactive，等待 AVP UI 的 START/Play
 
     def reset_env() -> None:
         nonlocal should_reset
@@ -125,6 +128,7 @@ def main() -> None:
     PLATFORM_JOINT_DEFAULT = 0.8  # 与 realman_config.py init_state platform_joint 一致
 
     _logged_action_shape = False
+    _last_debug_time = [time.perf_counter()]  # 用 list 以便在 closure 里更新
     dt = 1.0 / float(args_cli.control_hz)
 
     while simulation_app.is_running():
@@ -135,6 +139,12 @@ def main() -> None:
                 if not _logged_action_shape:
                     print(f"[XR Teleop] teleop advance() shape={action.shape}, action_dim={action_dim}")
                     _logged_action_shape = True
+                # 每约 2 秒打印一次 action 范数，若始终为 0 说明手部数据未传到本机
+                t = time.perf_counter()
+                if t - _last_debug_time[0] >= 2.0:
+                    _last_debug_time[0] = t
+                    an = float(action.abs().sum()) if action.numel() else 0.0
+                    print(f"[XR Teleop] active=1 action_sum_abs={an:.4f} (若始终≈0 则手部数据未到)")
                 actions = action.repeat(env.num_envs, 1)
                 if action_dim is not None and actions.shape[1] < action_dim:
                     pad = torch.full(
