@@ -111,6 +111,7 @@ def main() -> None:
 
     teleop_interface = create_teleop_device(args_cli.teleop_device, env_cfg.teleop_devices.devices, teleoperation_callbacks)
     print(f"[XR Teleop] Using teleop device: {teleop_interface}")
+    print("[XR Teleop] 请在 AVP 上点击 Play 后再动手指，否则机器人不会跟随。")
 
     env.reset()
     teleop_interface.reset()
@@ -118,11 +119,12 @@ def main() -> None:
     # realman 有 platform_joint（升降柱），teleop 只输出双臂+夹爪，需补平台目标（与 init_state 一致）
     try:
         action_dim = env.unwrapped.action_manager.total_action_dim
+        print(f"[XR Teleop] env action_dim={action_dim}, teleop 输出 dim 将在此后首帧打印")
     except Exception:
         action_dim = None
     PLATFORM_JOINT_DEFAULT = 0.8  # 与 realman_config.py init_state platform_joint 一致
 
-    # 主循环：注意 XR 下 OpenXR 的 rate limit 主要由 runtime 决定；这里只做一个 best-effort pacing
+    _logged_action_shape = False
     dt = 1.0 / float(args_cli.control_hz)
 
     while simulation_app.is_running():
@@ -130,8 +132,10 @@ def main() -> None:
             action = teleop_interface.advance()
 
             if teleoperation_active:
+                if not _logged_action_shape:
+                    print(f"[XR Teleop] teleop advance() shape={action.shape}, action_dim={action_dim}")
+                    _logged_action_shape = True
                 actions = action.repeat(env.num_envs, 1)
-                # 若 env 动作维数多于 teleop 输出（多出 platform），补默认平台高度
                 if action_dim is not None and actions.shape[1] < action_dim:
                     pad = torch.full(
                         (actions.shape[0], action_dim - actions.shape[1]),
@@ -140,7 +144,15 @@ def main() -> None:
                         dtype=actions.dtype,
                     )
                     actions = torch.cat([actions, pad], dim=1)
-                env.step(actions)
+                if not (torch.isfinite(actions).all()):
+                    pass  # 跳过含 NaN/Inf 的帧，避免仿真炸
+                else:
+                    try:
+                        env.step(actions)
+                    except Exception as e:
+                        print(f"[XR Teleop] env.step 异常: {e}")
+                        import traceback
+                        traceback.print_exc()
             else:
                 env.sim.render()
 

@@ -72,12 +72,12 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
     # 覆盖动作配置
     actions = RealmanFrankaEE_XrTeleopActionsCfg()
 
-    # XR 视角：场景在头显中的位置/朝向，按观感微调
-    # anchor_pos: 场景锚点相对头显原点的偏移 (x, y, z) 米。例如 (0,0,-0.8) 把场景放在眼前约 0.8m
-    # anchor_rot: 四元数 (w,x,y,z)，默认 (1,0,0,0) 不旋转；需要时可微调朝向
+    # XR 视角：模拟顶视（参考 camera_configs/realman.py 的 top_camera：俯视工作区）
+    # anchor_rot: 绕 X 轴 90° 使场景 Z 朝头显 -Y，戴头显时「低头」即俯视机器人顶
+    # 四元数 (w,x,y,z) 绕 X 轴 90° = (cos(45°), sin(45°), 0, 0)
     xr: XrCfg = XrCfg(
-        anchor_pos=(0.0, 0.0, -0.8),
-        anchor_rot=(1.0, 0.0, 0.0, 0.0),
+        anchor_pos=(0.0, 0.0, -1.2),
+        anchor_rot=(0.70710678, 0.70710678, 0.0, 0.0),
         near_plane=0.15,
     )
 
