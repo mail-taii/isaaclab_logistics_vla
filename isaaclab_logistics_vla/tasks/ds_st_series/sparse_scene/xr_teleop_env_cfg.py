@@ -1,5 +1,6 @@
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.devices.device_base import DevicesCfg
+from isaaclab.devices.openxr import XrCfg
 from isaaclab.devices.openxr.openxr_device import OpenXRDevice, OpenXRDeviceCfg
 from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeterCfg
 from isaaclab.devices.openxr.retargeters.manipulator.se3_rel_retargeter import Se3RelRetargeterCfg
@@ -54,6 +55,14 @@ class RealmanFrankaEE_XrTeleopActionsCfg:
         close_command_expr={"right_.*_joint": 0.0},
     )
 
+    # 升降柱：与 RealmanFrankaEE_ActionsCfg 一致，必须给出目标位置否则会因无控制而下坠
+    platform = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["platform_joint"],
+        scale=1.0,
+        use_default_offset=False,
+    )
+
 
 @register.add_env_configs("Spawn_ds_st_sparse_XRTeleop_EnvCfg")
 @configclass
@@ -62,6 +71,15 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
 
     # 覆盖动作配置
     actions = RealmanFrankaEE_XrTeleopActionsCfg()
+
+    # XR 视角：场景在头显中的位置/朝向，按观感微调
+    # anchor_pos: 场景锚点相对头显原点的偏移 (x, y, z) 米。例如 (0,0,-0.8) 把场景放在眼前约 0.8m
+    # anchor_rot: 四元数 (w,x,y,z)，默认 (1,0,0,0) 不旋转；需要时可微调朝向
+    xr: XrCfg = XrCfg(
+        anchor_pos=(0.0, 0.0, -0.8),
+        anchor_rot=(1.0, 0.0, 0.0, 0.0),
+        near_plane=0.15,
+    )
 
     def __post_init__(self):
         super().__post_init__()

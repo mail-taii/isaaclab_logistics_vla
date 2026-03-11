@@ -115,6 +115,13 @@ def main() -> None:
     env.reset()
     teleop_interface.reset()
 
+    # realman 有 platform_joint（升降柱），teleop 只输出双臂+夹爪，需补平台目标（与 init_state 一致）
+    try:
+        action_dim = env.unwrapped.action_manager.total_action_dim
+    except Exception:
+        action_dim = None
+    PLATFORM_JOINT_DEFAULT = 0.8  # 与 realman_config.py init_state platform_joint 一致
+
     # 主循环：注意 XR 下 OpenXR 的 rate limit 主要由 runtime 决定；这里只做一个 best-effort pacing
     dt = 1.0 / float(args_cli.control_hz)
 
@@ -124,6 +131,15 @@ def main() -> None:
 
             if teleoperation_active:
                 actions = action.repeat(env.num_envs, 1)
+                # 若 env 动作维数多于 teleop 输出（多出 platform），补默认平台高度
+                if action_dim is not None and actions.shape[1] < action_dim:
+                    pad = torch.full(
+                        (actions.shape[0], action_dim - actions.shape[1]),
+                        PLATFORM_JOINT_DEFAULT,
+                        device=actions.device,
+                        dtype=actions.dtype,
+                    )
+                    actions = torch.cat([actions, pad], dim=1)
                 env.step(actions)
             else:
                 env.sim.render()
