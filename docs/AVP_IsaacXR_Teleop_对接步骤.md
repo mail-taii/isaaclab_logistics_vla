@@ -163,6 +163,29 @@ conda activate env_isaaclab
 - `--xr` 会确保加载 XR experience，并在 Isaac Sim UI 里出现 AR Panel。
 - 首次建议 `--num_envs 1`，避免 XR 渲染/编码负载过高。
 
+### 调整 AVP 里的视角（XR anchor）
+
+视角由 **anchor 位置和朝向** 决定，可在**不改代码**的情况下用环境变量覆盖：
+
+```bash
+# 可选：覆盖 anchor（单位米；四元数 w,x,y,z）
+export TELEOP_XR_ANCHOR_POS="0,0,-1.2"    # 场景在眼前 1.2m
+export TELEOP_XR_ANCHOR_ROT="0,1,0,0"      # 顶视（正对即俯视）
+
+# 再运行 run_xr_teleop.py
+./isaaclab.sh -p scripts/run_xr_teleop.py ...
+```
+
+**常用预设（TELEOP_XR_ANCHOR_ROT）：**
+
+| 效果     | 四元数 (w,x,y,z)   |
+|----------|---------------------|
+| 顶视俯视 | `0,1,0,0`           |
+| 正对平视 | `1,0,0,0`           |
+| 侧视     | `0.707,0,0.707,0`   |
+
+可多试几组 `TELEOP_XR_ANCHOR_POS`（如 `0,0,-1` / `0,0,-1.5`）和上表组合，直到在 AVP 里观感合适。
+
 ---
 
 ## 五、简要检查清单

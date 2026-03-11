@@ -70,6 +70,28 @@ def main() -> None:
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.device = args_cli.device
 
+    # 通过环境变量覆盖 XR 视角（anchor），无需改代码即可试不同视角
+    # TELEOP_XR_ANCHOR_POS=x,y,z  例如 0,0,-1.2 表示场景在眼前约 1.2m
+    # TELEOP_XR_ANCHOR_ROT=w,x,y,z 四元数。常用：顶视 (0,1,0,0) 正前 (1,0,0,0) 侧视 (0.707,0,0.707,0)
+    if hasattr(env_cfg, "xr") and env_cfg.xr is not None:
+        from isaaclab.devices.openxr import XrCfg
+        pos_s = os.environ.get("TELEOP_XR_ANCHOR_POS", "").strip()
+        rot_s = os.environ.get("TELEOP_XR_ANCHOR_ROT", "").strip()
+        if pos_s or rot_s:
+            xr = env_cfg.xr
+            new_pos = xr.anchor_pos
+            new_rot = xr.anchor_rot
+            if pos_s:
+                parts = [float(p.strip()) for p in pos_s.split(",")]
+                if len(parts) == 3:
+                    new_pos = tuple(parts)
+            if rot_s:
+                parts = [float(p.strip()) for p in rot_s.split(",")]
+                if len(parts) == 4:
+                    new_rot = tuple(parts)
+            env_cfg.xr = XrCfg(anchor_pos=new_pos, anchor_rot=new_rot, near_plane=getattr(xr, "near_plane", 0.15))
+            print(f"[XR Teleop] 已用环境变量覆盖 XR anchor: pos={new_pos} rot={new_rot}")
+
     # 创建环境
     env = VLAIsaacEnv(cfg=env_cfg).unwrapped
 
