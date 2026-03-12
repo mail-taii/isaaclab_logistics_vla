@@ -137,10 +137,14 @@ def main() -> None:
         should_reset = True
         print("[XR Teleop] RESET")
 
+    # 点 Play 后烧掉一帧：用当前手姿作为 retargeter 的 previous，避免第一帧 delta 巨大导致手臂交缠
+    skip_first_frame_after_start = [True]
+
     def start_teleop() -> None:
         nonlocal teleoperation_active
         teleoperation_active = True
-        print("[XR Teleop] START")
+        skip_first_frame_after_start[0] = True
+        print("[XR Teleop] START（下一帧将用作零点，机器人不会动）")
 
     def stop_teleop() -> None:
         nonlocal teleoperation_active
@@ -221,70 +225,82 @@ def main() -> None:
             action = teleop_interface.advance()
 
             if teleoperation_active:
-                if not _logged_action_shape:
-                    print(f"[XR Teleop] teleop advance() shape={action.shape}, action_dim={action_dim}")
-                    _logged_action_shape = True
-                # 每约 2 秒打印一次 action 范数，若始终为 0 说明手部数据未传到本机
-                t = time.perf_counter()
-                if t - _last_debug_time[0] >= 2.0:
-                    _last_debug_time[0] = t
-                    an = float(action.abs().sum()) if action.numel() else 0.0
-                    # 尝试拆分：两臂(前12维) + 两夹爪(后2维) 的绝对和
-                    arm_sum = float(action[:12].abs().sum()) if action.numel() >= 12 else 0.0
-                    grip_sum = float(action[12:14].abs().sum()) if action.numel() >= 14 else 0.0
-                    print(
-                        f"[XR Teleop] active=1 arm_sum_abs={arm_sum:.4f} grip_sum_abs={grip_sum:.4f} "
-                        f"total={an:.4f} (若 arm≈0 且 grip≈2，通常是手部位姿未进来，只剩夹爪默认值)"
-                    )
-                    # 可选：打印 raw wrist/palm 位姿是否在变化
-                    if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
-                        try:
-                            raw = teleop_interface._get_raw_data()  # type: ignore[attr-defined]
-                            # raw: {HAND_LEFT: {joint: pose7}, HAND_RIGHT: {...}, HEAD: pose7}
-                            def _joint_pos(d, name):
-                                p = d.get(name, None)
-                                if p is None:
-                                    return None
-                                return tuple(float(x) for x in p[:3])
-                            l = raw.get(getattr(teleop_interface, "TrackingTarget").HAND_LEFT, {})
-                            r = raw.get(getattr(teleop_interface, "TrackingTarget").HAND_RIGHT, {})
-                            lw = _joint_pos(l, "wrist")
-                            lp = _joint_pos(l, "palm")
-                            rw = _joint_pos(r, "wrist")
-                            rp = _joint_pos(r, "palm")
-                            print(f"[XR Teleop] raw left(wrist,palm)={lw},{lp} right(wrist,palm)={rw},{rp}")
-                        except Exception:
-                            pass
-                # Realman 专用：参考 lerobot-realman-vla 的 Vive→Robot 轴映射做一个可选后处理
-                # 映射矩阵默认 identity；若设 TELEOP_REALMAN_AXIS_MAP=lerobot 则使用 [-z,-x,+y]
-                axis_map = os.environ.get("TELEOP_REALMAN_AXIS_MAP", "").strip().lower()
-                if axis_map == "lerobot" and action.numel() >= 12:
-                    # 对两臂的 (dx,dy,dz) 和 (rx,ry,rz) 分别做同样轴映射
-                    def _map3(v: torch.Tensor) -> torch.Tensor:
-                        return torch.stack([-v[2], -v[0], v[1]])
-                    a = action.clone()
-                    a[0:3] = _map3(a[0:3])
-                    a[3:6] = _map3(a[3:6])
-                    a[6:9] = _map3(a[6:9])
-                    a[9:12] = _map3(a[9:12])
-                    action = a
-
-                actions = action.repeat(env.num_envs, 1)
-                if action_dim is not None and actions.shape[1] < action_dim:
-                    pad = torch.full(
-                        (actions.shape[0], action_dim - actions.shape[1]),
-                        PLATFORM_JOINT_DEFAULT,
-                        device=actions.device,
-                        dtype=actions.dtype,
-                    )
-                    actions = torch.cat([actions, pad], dim=1)
-                if not (torch.isfinite(actions).all()):
-                    pass  # 跳过含 NaN/Inf 的帧，避免仿真炸
-                else:
+                # START 后烧掉一帧：advance() 已在上方调用，retargeter 的 previous 已更新，本帧用零动作 step 一次
+                if skip_first_frame_after_start[0]:
+                    dim = action_dim if action_dim is not None else action.shape[1]
+                    zero_actions = torch.zeros(env.num_envs, dim, device=env.unwrapped.device, dtype=torch.float32)
+                    if action_dim is not None and dim >= 1:
+                        zero_actions[:, -1] = PLATFORM_JOINT_DEFAULT
                     try:
-                        env.step(actions)
+                        env.step(zero_actions)
                     except Exception as e:
-                        print(f"[XR Teleop] env.step 异常: {e}")
+                        print(f"[XR Teleop] 首帧零 step 异常: {e}")
+                    skip_first_frame_after_start[0] = False
+                else:
+                    if not _logged_action_shape:
+                        print(f"[XR Teleop] teleop advance() shape={action.shape}, action_dim={action_dim}")
+                        _logged_action_shape = True
+                    # 每约 2 秒打印一次 action 范数，若始终为 0 说明手部数据未传到本机
+                    t = time.perf_counter()
+                    if t - _last_debug_time[0] >= 2.0:
+                        _last_debug_time[0] = t
+                        an = float(action.abs().sum()) if action.numel() else 0.0
+                        # 尝试拆分：两臂(前12维) + 两夹爪(后2维) 的绝对和
+                        arm_sum = float(action[:12].abs().sum()) if action.numel() >= 12 else 0.0
+                        grip_sum = float(action[12:14].abs().sum()) if action.numel() >= 14 else 0.0
+                        print(
+                            f"[XR Teleop] active=1 arm_sum_abs={arm_sum:.4f} grip_sum_abs={grip_sum:.4f} "
+                            f"total={an:.4f} (若 arm≈0 且 grip≈2，通常是手部位姿未进来，只剩夹爪默认值)"
+                        )
+                        # 可选：打印 raw wrist/palm 位姿是否在变化
+                        if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
+                            try:
+                                raw = teleop_interface._get_raw_data()  # type: ignore[attr-defined]
+                                # raw: {HAND_LEFT: {joint: pose7}, HAND_RIGHT: {...}, HEAD: pose7}
+                                def _joint_pos(d, name):
+                                    p = d.get(name, None)
+                                    if p is None:
+                                        return None
+                                    return tuple(float(x) for x in p[:3])
+                                l = raw.get(getattr(teleop_interface, "TrackingTarget").HAND_LEFT, {})
+                                r = raw.get(getattr(teleop_interface, "TrackingTarget").HAND_RIGHT, {})
+                                lw = _joint_pos(l, "wrist")
+                                lp = _joint_pos(l, "palm")
+                                rw = _joint_pos(r, "wrist")
+                                rp = _joint_pos(r, "palm")
+                                print(f"[XR Teleop] raw left(wrist,palm)={lw},{lp} right(wrist,palm)={rw},{rp}")
+                            except Exception:
+                                pass
+                    # Realman 专用：参考 lerobot-realman-vla 的 Vive→Robot 轴映射做一个可选后处理
+                    # 映射矩阵默认 identity；若设 TELEOP_REALMAN_AXIS_MAP=lerobot 则使用 [-z,-x,+y]
+                    axis_map = os.environ.get("TELEOP_REALMAN_AXIS_MAP", "").strip().lower()
+                    if axis_map == "lerobot" and action.numel() >= 12:
+                        # 对两臂的 (dx,dy,dz) 和 (rx,ry,rz) 分别做同样轴映射
+                        def _map3(v: torch.Tensor) -> torch.Tensor:
+                            return torch.stack([-v[2], -v[0], v[1]])
+                        a = action.clone()
+                        a[0:3] = _map3(a[0:3])
+                        a[3:6] = _map3(a[3:6])
+                        a[6:9] = _map3(a[6:9])
+                        a[9:12] = _map3(a[9:12])
+                        action = a
+
+                    actions = action.repeat(env.num_envs, 1)
+                    if action_dim is not None and actions.shape[1] < action_dim:
+                        pad = torch.full(
+                            (actions.shape[0], action_dim - actions.shape[1]),
+                            PLATFORM_JOINT_DEFAULT,
+                            device=actions.device,
+                            dtype=actions.dtype,
+                        )
+                        actions = torch.cat([actions, pad], dim=1)
+                    if not (torch.isfinite(actions).all()):
+                        pass  # 跳过含 NaN/Inf 的帧，避免仿真炸
+                    else:
+                        try:
+                            env.step(actions)
+                        except Exception as e:
+                            print(f"[XR Teleop] env.step 异常: {e}")
                         import traceback
                         traceback.print_exc()
             else:
