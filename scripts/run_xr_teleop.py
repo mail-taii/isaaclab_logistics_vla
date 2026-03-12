@@ -149,7 +149,7 @@ def main() -> None:
     def stop_teleop() -> None:
         nonlocal teleoperation_active
         teleoperation_active = False
-        print("[XR Teleop] STOP")
+        print("[XR Teleop] STOP —— 遥操作已暂停，机器人将不再跟随。请在 AVP 上再次点击 Play 恢复控制。")
 
     teleoperation_callbacks: dict[str, Callable[[], None]] = {
         "START": start_teleop,
@@ -203,6 +203,7 @@ def main() -> None:
         )
         print(f"[XR Teleop] Using teleop device: {teleop_interface}")
     print("[XR Teleop] 请在 AVP 上点击 Play 后再动手指，否则机器人不会跟随。")
+    print("[XR Teleop] 若机器人一直不动：1) 确认 AVP 上为 Play 状态（非 Stop）；2) 可设 TELEOP_FORCE_ACTIVE=1 强制开启遥操作以排查。")
     if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
         print("[XR Teleop] TELEOP_DEBUG_RAW=1：将打印 OpenXR 原始 wrist/palm 位姿变化（若可用）")
 
@@ -219,11 +220,18 @@ def main() -> None:
 
     _logged_action_shape = False
     _last_debug_time = [time.perf_counter()]  # 用 list 以便在 closure 里更新
+    _last_paused_reminder = [time.perf_counter()]
     dt = 1.0 / float(args_cli.control_hz)
 
     while simulation_app.is_running():
         with torch.inference_mode():
-            action = teleop_interface.advance()
+            try:
+                action = teleop_interface.advance()
+            except Exception as e:
+                print(f"[XR Teleop] advance() 异常（可能导致 TF_PYTHON_EXCEPTION）: {e}")
+                import traceback
+                traceback.print_exc()
+                action = torch.zeros(1, action_dim or 14, device=env.unwrapped.device, dtype=torch.float32)
 
             if teleoperation_active:
                 # START 后烧掉一帧：advance() 已在上方调用，retargeter 的 previous 已更新，本帧用零动作 step 一次
@@ -305,6 +313,11 @@ def main() -> None:
                         import traceback
                         traceback.print_exc()
             else:
+                # 未在 Play 状态时只渲染，机器人不跟随；每隔约 5 秒提醒一次
+                t = time.perf_counter()
+                if t - _last_paused_reminder[0] >= 5.0:
+                    _last_paused_reminder[0] = t
+                    print("[XR Teleop] 当前为 STOP 状态，机器人未跟随。请在 AVP 上点击 Play 恢复控制。")
                 env.sim.render()
 
             if should_reset:
