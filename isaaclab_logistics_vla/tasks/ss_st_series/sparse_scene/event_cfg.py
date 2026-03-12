@@ -39,3 +39,12 @@ class Spawn_ss_st_sparse_EventCfg:
         }
     )
 
+    randomize_obstacle_texture = EventTermCfg(
+        func=mdp.randomize_unified_visual_texture,
+        mode="reset",
+        params={
+            "target_asset_names": ["large_obstacle"],
+            "texture_paths": [f"{ASSET_ROOT_PATH}/texture/obstacle_wood.png"],
+        }
+    )
+

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from dataclasses import MISSING
 
@@ -11,9 +13,9 @@ from .Spawn_ss_st_sparse_CommandTerm import Spawn_ss_st_sparse_CommandTerm
 
 @configclass
 class Spawn_ss_st_sparse_CommandTermCfg(OrderCommandTermCfg):
-    class_type:type = Spawn_ss_st_sparse_CommandTerm
+    class_type: type = Spawn_ss_st_sparse_CommandTerm
 
     num_active_skus: int = 3         # 本局选几种 SKU
     max_instances_per_sku: int = 2   # 每种 SKU 选几个
-
     
+    obstacles: list[str] | None = None

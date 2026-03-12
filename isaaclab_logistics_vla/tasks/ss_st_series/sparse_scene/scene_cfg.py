@@ -14,22 +14,42 @@ from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
 SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],2),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],2),
-    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],2),
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'], 2),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'], 2),
+    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'], 2),
 }
-
 
 @configclass
 class Spawn_ss_st_sparse_SceneCfg(BaseOrderSceneCfg):
+    
+    # --- 机器人与参考系 ---
     robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
-    robot.init_state.pos  = (0.96781,2.28535,0.216)
-    robot.init_state.rot = (1,0,0,0)
+    robot.init_state.pos  = (0.96781, 2.28535, 0.216)
+    robot.init_state.rot = (1, 0, 0, 0)
 
-    replicate_physics=False
+    replicate_physics = False
 
     ee_frame: FrameTransformerCfg = register.load_eeframe_configs('realman_franka_ee_eeframe')()
 
+    large_obstacle = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/large_obstacle",
+        spawn=sim_utils.CuboidCfg(
+            size=(0.30, 0.15, 0.30), 
+            visual_material=sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(0.8, 0.1, 0.1) # 默认红色
+            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                linear_damping=0.5,
+                angular_damping=0.5,
+                max_depenetration_velocity=0.5
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, -10.0)),
+    )
+
+
+# --- 动态注入 SKU 物品实例 ---
 for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
     for i in range(count):
         # 实例名: cracker_box_0, cracker_box_1 ...
@@ -45,9 +65,9 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
                     sleep_threshold=0.05
                 ),
             ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0),rot=(1, 0, 0, 0)),
+            # 同样将所有 SKU 默认放在地下，等待 _assign_objects_boxes 的分配和召唤
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(0, 0, -10.0), rot=(1, 0, 0, 0)),
         )
         
-        # [关键] 动态注入到 MySceneCfg 类中
-        # 这样 Isaac Lab 解析时就能看到这些属性
+        # 动态注入到唯一的 MySceneCfg 类中
         setattr(Spawn_ss_st_sparse_SceneCfg, instance_name, obj_cfg)
