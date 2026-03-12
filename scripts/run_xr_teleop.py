@@ -95,8 +95,15 @@ def main() -> None:
     # 创建环境
     env = VLAIsaacEnv(cfg=env_cfg).unwrapped
 
-    # XR 手部遥操作设备（从 env_cfg.teleop_devices 中构造）
+    # XR 手部遥操作设备
     from isaaclab.devices.teleop_device_factory import create_teleop_device
+    from isaaclab.devices.openxr import OpenXRDevice, OpenXRDeviceCfg
+    from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeter, GripperRetargeterCfg
+    from isaaclab_logistics_vla.teleop.retargeters.realman_se3_rel_retargeter import (
+        RealmanSe3RelRetargeter,
+        RealmanSe3RelRelRetargeterCfg if False else None,  # type: ignore[assignment]
+    )
+    # 上面一行只是为了在类型检查时保持引用；真正的 cfg 在下方按需导入
 
     # 可选：运行时调参（不改代码）
     # TELEOP_POS_SCALE / TELEOP_ROT_SCALE 会覆盖 Se3RelRetargeterCfg 的 delta_*_scale_factor
@@ -152,16 +159,49 @@ def main() -> None:
         "R": reset_env,
     }
 
-    if not hasattr(env_cfg, "teleop_devices") or args_cli.teleop_device not in env_cfg.teleop_devices.devices:
-        omni.log.error(
-            f"[XR Teleop] env_cfg.teleop_devices 缺少 '{args_cli.teleop_device}' 配置。"
-            "请使用 *_XRTeleop_EnvCfg，或在你的 EnvCfg 中添加 teleop_devices.handtracking。"
+    use_custom = os.environ.get("TELEOP_USE_CUSTOM_RETARGETER", "").strip().lower() in ("1", "true", "yes")
+    if use_custom:
+        # 使用自定义 Realman retargeter，绕过 factory。
+        from isaaclab_logistics_vla.teleop.retargeters.realman_se3_rel_retargeter import (
+            RealmanSe3RelRetargeterCfg,
+            RealmanSe3RelRetargeter,
         )
-        env.close()
-        return
 
-    teleop_interface = create_teleop_device(args_cli.teleop_device, env_cfg.teleop_devices.devices, teleoperation_callbacks)
-    print(f"[XR Teleop] Using teleop device: {teleop_interface}")
+        dev_cfg = OpenXRDeviceCfg(xr_cfg=env_cfg.xr)
+        left_cfg = RealmanSe3RelRetargeterCfg(
+            bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,
+            sim_device=env_cfg.sim.device,
+        )
+        right_cfg = RealmanSe3RelRetargeterCfg(
+            bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT,
+            sim_device=env_cfg.sim.device,
+        )
+        left = RealmanSe3RelRetargeter(left_cfg)
+        right = RealmanSe3RelRetargeter(right_cfg)
+        grip_left = GripperRetargeter(
+            GripperRetargeterCfg(bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT, sim_device=env_cfg.sim.device)
+        )
+        grip_right = GripperRetargeter(
+            GripperRetargeterCfg(bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT, sim_device=env_cfg.sim.device)
+        )
+        teleop_interface = OpenXRDevice(cfg=dev_cfg, retargeters=[left, grip_left, right, grip_right])
+        # 注册 XR UI 的 START/STOP/RESET 回调
+        for key, cb in teleoperation_callbacks.items():
+            if key in ("START", "STOP", "RESET"):
+                teleop_interface.add_callback(key, cb)
+        print("[XR Teleop] 使用自定义 Realman retargeter (TELEOP_USE_CUSTOM_RETARGETER=1)")
+    else:
+        if not hasattr(env_cfg, "teleop_devices") or args_cli.teleop_device not in env_cfg.teleop_devices.devices:
+            omni.log.error(
+                f"[XR Teleop] env_cfg.teleop_devices 缺少 '{args_cli.teleop_device}' 配置。"
+                "请使用 *_XRTeleop_EnvCfg，或在你的 EnvCfg 中添加 teleop_devices.handtracking。"
+            )
+            env.close()
+            return
+        teleop_interface = create_teleop_device(
+            args_cli.teleop_device, env_cfg.teleop_devices.devices, teleoperation_callbacks
+        )
+        print(f"[XR Teleop] Using teleop device: {teleop_interface}")
     print("[XR Teleop] 请在 AVP 上点击 Play 后再动手指，否则机器人不会跟随。")
     if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
         print("[XR Teleop] TELEOP_DEBUG_RAW=1：将打印 OpenXR 原始 wrist/palm 位姿变化（若可用）")
