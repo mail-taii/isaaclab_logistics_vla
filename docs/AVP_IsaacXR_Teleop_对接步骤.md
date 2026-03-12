@@ -200,6 +200,7 @@ export TELEOP_XR_ANCHOR_ROT="0,1,0,0"      # 顶视（正对即俯视）
 | `TELEOP_POS_SCALE` | 手部位移 → 末端位移的放大倍数，越大则「手动一点、机器人动得越远」 | 8.0 |
 | `TELEOP_ROT_SCALE` | 手部旋转 → 末端旋转的放大倍数 | 8.0 |
 | `TELEOP_IK_SCALE` | IK 动作 scale，末端跟随幅度 | 1.0 |
+| `TELEOP_POS_SCALE_X` / `_Y` / `_Z` | 世界系 X/Y/Z 轴单独缩放；**若「上下能动、往前伸卡住」可试** `TELEOP_POS_SCALE_X=2` 或 `TELEOP_POS_SCALE_Y=2` | 1.0 |
 
 示例：
 
@@ -220,6 +221,8 @@ TELEOP_POS_SCALE=5 TELEOP_ROT_SCALE=5 TELEOP_IK_SCALE=0.8 ./isaaclab.sh -p scrip
 | `TELEOP_FORCE_ACTIVE=1` | 强制遥操作始终开启，忽略 AVP 的 Stop，用于排查「机器人不动」是否因误触 Stop |
 | `TELEOP_USE_CUSTOM_RETARGETER=1` | 使用自定义 Realman retargeter（一般用默认即可） |
 | `TELEOP_DEBUG_RAW=1` | 打印 OpenXR 原始 wrist/palm 位姿，便于调试手部数据 |
+| `TELEOP_REALMAN_AXIS_MAP=lerobot` | 手部→机器人轴映射为 [-z,-x,+y]；若「往前伸」方向反了或卡住可尝试开启或关闭 |
+| `TELEOP_POS_FRAME=xr_yup_negz_fwd` | **与 curobo/场景世界系对齐**：XR 常见为 Y-up、-Z=前，直接加会给世界 Z 导致「上下能动、往前卡住」。此选项将位置增量从 XR 系转为世界系 (world_x=-xr_z, world_y=xr_x, world_z=xr_y)。 |
 
 ---
 

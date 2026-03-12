@@ -115,6 +115,13 @@ def main() -> None:
     teleop_pos_scale = args_cli.teleop_pos_scale if args_cli.teleop_pos_scale is not None else _teleop_scale("TELEOP_POS_SCALE", 8.0)
     teleop_rot_scale = args_cli.teleop_rot_scale if args_cli.teleop_rot_scale is not None else _teleop_scale("TELEOP_ROT_SCALE", 8.0)
     teleop_ik_scale = args_cli.teleop_ik_scale if args_cli.teleop_ik_scale is not None else _teleop_scale("TELEOP_IK_SCALE", 1.0)
+    # 分轴位置缩放：若「往前伸」卡住、上下却正常，可单独放大某一轴（世界系 X/Y/Z，默认 1.0 不额外缩放）
+    teleop_pos_scale_x = _teleop_scale("TELEOP_POS_SCALE_X", 1.0)
+    teleop_pos_scale_y = _teleop_scale("TELEOP_POS_SCALE_Y", 1.0)
+    teleop_pos_scale_z = _teleop_scale("TELEOP_POS_SCALE_Z", 1.0)
+    # 位置增量坐标系：与 curobo_reach_box_policy / 场景一致为世界系 (X,Y,Z)。
+    # 若 XR 运行时为 Y-up、-Z 前，则「往前伸」会变成世界 Z，导致上下能动、往前卡住。可试 TELEOP_POS_FRAME=xr_yup_negz_fwd
+    teleop_pos_frame = os.environ.get("TELEOP_POS_FRAME", "").strip().lower()
 
     env_cfg = register.load_env_configs(args_cli.task_scene_name)()
     env_cfg.scene.num_envs = args_cli.num_envs
@@ -277,6 +284,16 @@ def main() -> None:
         "[XR Teleop] 动作幅度：pos_scale=%.1f rot_scale=%.1f ik_scale=%.1f（可用 --teleop_pos_scale 等或环境变量）"
         % (teleop_pos_scale, teleop_rot_scale, teleop_ik_scale)
     )
+    if teleop_pos_scale_x != 1.0 or teleop_pos_scale_y != 1.0 or teleop_pos_scale_z != 1.0:
+        print(
+            "[XR Teleop] 位置分轴缩放：X=%.1f Y=%.1f Z=%.1f（若往前伸卡住可试 TELEOP_POS_SCALE_X/Y=2）"
+            % (teleop_pos_scale_x, teleop_pos_scale_y, teleop_pos_scale_z)
+        )
+    if teleop_pos_frame:
+        print(
+            "[XR Teleop] 位置增量坐标系: TELEOP_POS_FRAME=%s（与 curobo/场景世界系对齐，解决往前伸卡住）"
+            % (teleop_pos_frame,)
+        )
     if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
         print("[XR Teleop] TELEOP_DEBUG_RAW=1：将打印 OpenXR 原始 wrist/palm 位姿变化（若可用）")
 
@@ -353,6 +370,19 @@ def main() -> None:
                                 print(f"[XR Teleop] raw left(wrist,palm)={lw},{lp} right(wrist,palm)={rw},{rp}")
                             except Exception:
                                 pass
+                    # 位置增量坐标系转换：与 curobo/场景世界系一致（见 curobo_reach_box_policy 世界系、planner 臂基系纯减法）
+                    # 若 XR 为 Y-up、-Z=前，则「往前伸」会变成世界 Z，导致上下能动、往前卡住。试 TELEOP_POS_FRAME=xr_yup_negz_fwd
+                    if teleop_pos_frame == "xr_yup_negz_fwd" and action.numel() >= 9:
+                        # XR (right, up, back) → world (forward, left, up): world = (-xr_z, xr_x, xr_y)
+                        a = action.clone()
+                        for start in (0, 6):
+                            if start + 3 <= action.numel():
+                                v = a[start : start + 3]
+                                a[start] = -v[2]
+                                a[start + 1] = v[0]
+                                a[start + 2] = v[1]
+                        action = a
+
                     # Realman 专用：参考 lerobot-realman-vla 的 Vive→Robot 轴映射做一个可选后处理
                     # 映射矩阵默认 identity；若设 TELEOP_REALMAN_AXIS_MAP=lerobot 则使用 [-z,-x,+y]
                     axis_map = os.environ.get("TELEOP_REALMAN_AXIS_MAP", "").strip().lower()
@@ -366,6 +396,17 @@ def main() -> None:
                         a[6:9] = _map3(a[6:9])
                         a[9:12] = _map3(a[9:12])
                         action = a
+
+                    # 分轴位置缩放：解决「上下能动、往前伸卡住」— 可试 TELEOP_POS_SCALE_X/Y=2（世界系）
+                    if (teleop_pos_scale_x != 1.0 or teleop_pos_scale_y != 1.0 or teleop_pos_scale_z != 1.0) and action.numel() >= 9:
+                        scale_xyz = torch.tensor(
+                            [teleop_pos_scale_x, teleop_pos_scale_y, teleop_pos_scale_z],
+                            device=action.device,
+                            dtype=action.dtype,
+                        )
+                        action = action.clone()
+                        action[0:3] = action[0:3] * scale_xyz
+                        action[6:9] = action[6:9] * scale_xyz
 
                     actions = action.repeat(env.num_envs, 1)
                     if action_dim is not None and actions.shape[1] < action_dim:
@@ -383,8 +424,6 @@ def main() -> None:
                             env.step(actions)
                         except Exception as e:
                             print(f"[XR Teleop] env.step 异常: {e}")
-                        import traceback
-                        traceback.print_exc()
             else:
                 # 未在 Play 状态时只渲染，机器人不跟随；每隔约 5 秒提醒一次
                 t = time.perf_counter()
