@@ -3,9 +3,39 @@ XR(handtracking) 遥操作入口：在 isaaclab_logistics_vla 的任务场景上
 
 工作流（先确保已按 Isaac Lab 文档启动 CloudXR Runtime，并在 Isaac Sim UI 中 Start AR）：
 
+最小命令（使用默认参数）:
 ```bash
 conda activate env_isaaclab
-./isaaclab.sh -p scripts/run_xr_teleop.py --task_scene_name Spawn_ds_st_sparse_XRTeleop_EnvCfg --xr
+cd /path/to/isaaclab_logistics_vla
+./isaaclab.sh -p scripts/run_xr_teleop.py --xr
+```
+
+完整命令（显式指定常用参数，可按需改 asset_root_path / device）:
+```bash
+conda activate env_isaaclab
+cd /path/to/isaaclab_logistics_vla
+
+./isaaclab.sh -p scripts/run_xr_teleop.py \
+  --task_scene_name Spawn_ds_st_sparse_XRTeleop_EnvCfg \
+  --num_envs 1 \
+  --control_hz 45 \
+  --asset_root_path /home/junzhe/Benchmark \
+  --device cuda:0 \
+  --xr
+```
+
+可选：启动前设环境变量可调视角与动作幅度，例如:
+```bash
+# 视角（单位米；四元数 w,x,y,z）
+export TELEOP_XR_ANCHOR_POS="1.0,2.2,0"
+export TELEOP_XR_ANCHOR_ROT="0.9659,0.2588,0,0"   # 约 (-90,30,0) 欧拉
+
+# 动作幅度（越大则手动一点机器人动得越远）
+export TELEOP_POS_SCALE=8
+export TELEOP_ROT_SCALE=8
+export TELEOP_IK_SCALE=1.0
+
+./isaaclab.sh -p scripts/run_xr_teleop.py --xr
 ```
 """
 

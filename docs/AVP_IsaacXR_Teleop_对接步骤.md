@@ -140,10 +140,20 @@ export XR_RUNTIME_JSON=/path/to/isaaclab/openxr/share/openxr/1/openxr_cloudxr.js
   - 启动 Isaac App、加载 `*_XRTeleop_EnvCfg`、创建 OpenXR teleop device  
   - 监听 AVP UI 发来的 `START/STOP/RESET`（Play/Stop/Reset）事件
 
-启动命令（在 `isaaclab_logistics_vla` 仓库根目录执行，确保使用 `isaaclab.sh` 的 Python 环境）：
+**最小命令**（使用脚本默认参数，在 `isaaclab_logistics_vla` 仓库根目录执行）：
 
 ```bash
 conda activate env_isaaclab
+cd /path/to/isaaclab_logistics_vla
+./isaaclab.sh -p scripts/run_xr_teleop.py --xr
+```
+
+**完整命令**（显式写出所有常用参数，便于改 `asset_root_path`、`device` 等）：
+
+```bash
+conda activate env_isaaclab
+cd /path/to/isaaclab_logistics_vla
+
 ./isaaclab.sh -p scripts/run_xr_teleop.py \
   --task_scene_name Spawn_ds_st_sparse_XRTeleop_EnvCfg \
   --num_envs 1 \
