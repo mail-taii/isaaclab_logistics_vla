@@ -158,6 +158,12 @@ def main() -> None:
         "R": reset_env,
     }
 
+    def _teleop_scale(name: str, default: float) -> float:
+        try:
+            return float(os.environ.get(name, str(default)))
+        except (TypeError, ValueError):
+            return default
+
     use_custom = os.environ.get("TELEOP_USE_CUSTOM_RETARGETER", "").strip().lower() in ("1", "true", "yes")
     if use_custom:
         # 使用自定义 Realman retargeter，绕过 factory。
@@ -166,14 +172,20 @@ def main() -> None:
             RealmanSe3RelRetargeter,
         )
 
+        pos_scale = _teleop_scale("TELEOP_POS_SCALE", 8.0)
+        rot_scale = _teleop_scale("TELEOP_ROT_SCALE", 8.0)
         dev_cfg = OpenXRDeviceCfg(xr_cfg=env_cfg.xr)
         left_cfg = RealmanSe3RelRetargeterCfg(
             bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,
             sim_device=env_cfg.sim.device,
+            delta_pos_scale_factor=pos_scale,
+            delta_rot_scale_factor=rot_scale,
         )
         right_cfg = RealmanSe3RelRetargeterCfg(
             bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT,
             sim_device=env_cfg.sim.device,
+            delta_pos_scale_factor=pos_scale,
+            delta_rot_scale_factor=rot_scale,
         )
         left = RealmanSe3RelRetargeter(left_cfg)
         right = RealmanSe3RelRetargeter(right_cfg)
@@ -204,6 +216,10 @@ def main() -> None:
         print(f"[XR Teleop] Using teleop device: {teleop_interface}")
     print("[XR Teleop] 请在 AVP 上点击 Play 后再动手指，否则机器人不会跟随。")
     print("[XR Teleop] 若机器人一直不动：1) 确认 AVP 上为 Play 状态（非 Stop）；2) 可设 TELEOP_FORCE_ACTIVE=1 强制开启遥操作以排查。")
+    print(
+        "[XR Teleop] 动作幅度可配：TELEOP_POS_SCALE=%.1f TELEOP_ROT_SCALE=%.1f TELEOP_IK_SCALE=%.1f（可通过环境变量覆盖）"
+        % (_teleop_scale("TELEOP_POS_SCALE", 8.0), _teleop_scale("TELEOP_ROT_SCALE", 8.0), _teleop_scale("TELEOP_IK_SCALE", 1.0))
+    )
     if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
         print("[XR Teleop] TELEOP_DEBUG_RAW=1：将打印 OpenXR 原始 wrist/palm 位姿变化（若可用）")
 

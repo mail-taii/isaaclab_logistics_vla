@@ -1,3 +1,5 @@
+import os
+
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.devices.openxr import XrCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
@@ -23,12 +25,13 @@ class RealmanFrankaEE_XrTeleopActionsCfg:
       不影响评估与训练。
     """
 
+    # scale 越大末端跟随幅度越大（0.5 偏小，改为 1.0 便于够到箱子）
     left_arm_ik = DifferentialInverseKinematicsActionCfg(
         asset_name="robot",
         joint_names=["l_joint[1-7]"],
         body_name="panda_left_hand",
         controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=True, ik_method="dls"),
-        scale=0.5,
+        scale=1.0,
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.1034]),
     )
 
@@ -37,7 +40,7 @@ class RealmanFrankaEE_XrTeleopActionsCfg:
         joint_names=["r_joint[1-7]"],
         body_name="panda_right_hand",
         controller=DifferentialIKControllerCfg(command_type="pose", use_relative_mode=True, ik_method="dls"),
-        scale=0.5,
+        scale=1.0,
         body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.1034]),
     )
 
@@ -82,6 +85,14 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+
+        # 动作幅度可配：TELEOP_IK_SCALE（默认 1.0），越大末端跟随幅度越大
+        try:
+            ik_scale = float(os.environ.get("TELEOP_IK_SCALE", "1.0"))
+        except (TypeError, ValueError):
+            ik_scale = 1.0
+        self.actions.left_arm_ik.scale = ik_scale
+        self.actions.right_arm_ik.scale = ik_scale
 
         # XR 建议的仿真/渲染节奏：90Hz 物理 + 45Hz 立体渲染（按官方建议）
         self.sim.dt = 1.0 / 90.0

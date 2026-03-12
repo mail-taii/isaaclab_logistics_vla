@@ -83,7 +83,7 @@ export XR_RUNTIME_JSON=/path/to/isaaclab/openxr/share/openxr/1/openxr_cloudxr.js
 1. 打开 **Isaac XR Teleop Sample Client**。
 2. 输入 **workstation 的 IP 地址**（与 AVP 同网段的那个）。
 3. 点击 **Connect**，首次可能需允许本地网络、手部追踪等权限。
-4. 连接成功后点击 **Play** 即可用手部控制仿真中的机器人；**Stop** / **Reset** 可暂停或重置。
+4. 连接成功后点击 **Play** 即可用手部控制仿真中的机器人；**Stop** 会暂停跟随（机器人不再动），**Reset** 会重置场景。只有处于 **Play** 状态时手部动作才会驱动机器人。
 
 ---
 
@@ -156,6 +156,7 @@ conda activate env_isaaclab
 说明：
 - `--xr` 会确保加载 XR experience，并在 Isaac Sim UI 里出现 AR Panel。
 - 首次建议 `--num_envs 1`，避免 XR 渲染/编码负载过高。
+- 若机器人一直不动：确认 AVP 上为 **Play** 状态（非 Stop）；或设 `TELEOP_FORCE_ACTIVE=1` 强制开启遥操作以排查。
 
 ### 调整 AVP 里的视角（XR anchor）
 
@@ -179,6 +180,36 @@ export TELEOP_XR_ANCHOR_ROT="0,1,0,0"      # 顶视（正对即俯视）
 | 侧视     | `0.707,0,0.707,0`   |
 
 可多试几组 `TELEOP_XR_ANCHOR_POS`（如 `0,0,-1` / `0,0,-1.5`）和上表组合，直到在 AVP 里观感合适。
+
+### 动作幅度可配置（环境变量）
+
+手部动作到机器人末端的放大倍数和 IK 跟随幅度均可通过环境变量调节，无需改代码：
+
+| 环境变量 | 含义 | 默认值 |
+|----------|------|--------|
+| `TELEOP_POS_SCALE` | 手部位移 → 末端位移的放大倍数，越大则「手动一点、机器人动得越远」 | 8.0 |
+| `TELEOP_ROT_SCALE` | 手部旋转 → 末端旋转的放大倍数 | 8.0 |
+| `TELEOP_IK_SCALE` | IK 动作 scale，末端跟随幅度 | 1.0 |
+
+示例：
+
+```bash
+# 动作再大一点，更容易够到远处
+TELEOP_POS_SCALE=12 TELEOP_IK_SCALE=1.2 ./isaaclab.sh -p scripts/run_xr_teleop.py ...
+
+# 动作小一点、更稳
+TELEOP_POS_SCALE=5 TELEOP_ROT_SCALE=5 TELEOP_IK_SCALE=0.8 ./isaaclab.sh -p scripts/run_xr_teleop.py ...
+```
+
+启动时脚本会打印当前生效的 `TELEOP_POS_SCALE / TELEOP_ROT_SCALE / TELEOP_IK_SCALE`，便于确认。
+
+### 其他可选环境变量
+
+| 环境变量 | 含义 |
+|----------|------|
+| `TELEOP_FORCE_ACTIVE=1` | 强制遥操作始终开启，忽略 AVP 的 Stop，用于排查「机器人不动」是否因误触 Stop |
+| `TELEOP_USE_CUSTOM_RETARGETER=1` | 使用自定义 Realman retargeter（一般用默认即可） |
+| `TELEOP_DEBUG_RAW=1` | 打印 OpenXR 原始 wrist/palm 位姿，便于调试手部数据 |
 
 ---
 

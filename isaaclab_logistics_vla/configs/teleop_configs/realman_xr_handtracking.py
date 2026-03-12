@@ -1,23 +1,34 @@
 from __future__ import annotations
 
+import os
+
 from isaaclab.devices.device_base import DevicesCfg
 from isaaclab.devices.openxr.openxr_device import OpenXRDeviceCfg
 from isaaclab.devices.openxr.openxr_device import OpenXRDevice
 from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeterCfg
 from isaaclab.devices.openxr.retargeters.manipulator.se3_rel_retargeter import Se3RelRetargeterCfg
 
+def _teleop_float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 def build_realman_xr_handtracking_devices_cfg(*, sim_device: str, xr_cfg) -> DevicesCfg:
     """Realman 专用 XR(handtracking) 设备配置。
 
     说明：
     - 保持与 Isaac Lab `teleop_se3_agent.py` 一致：OpenXRDevice + retargeters。
-    - 仍使用 Isaac Lab 内置 retargeter（避免黑屏/未知 cfg type），Realman 的轴向/符号映射在运行时后处理。
+    - 动作幅度可配：TELEOP_POS_SCALE / TELEOP_ROT_SCALE（默认 8.0），越大则手动一点机器人动得越多。
     """
+    pos_scale = _teleop_float_env("TELEOP_POS_SCALE", 8.0)
+    rot_scale = _teleop_float_env("TELEOP_ROT_SCALE", 8.0)
 
     left = Se3RelRetargeterCfg(
         bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,
-        delta_pos_scale_factor=3.0,
-        delta_rot_scale_factor=3.0,
+        delta_pos_scale_factor=pos_scale,
+        delta_rot_scale_factor=rot_scale,
         alpha_pos=0.5,
         alpha_rot=0.5,
         use_wrist_rotation=True,
@@ -28,8 +39,8 @@ def build_realman_xr_handtracking_devices_cfg(*, sim_device: str, xr_cfg) -> Dev
 
     right = Se3RelRetargeterCfg(
         bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT,
-        delta_pos_scale_factor=3.0,
-        delta_rot_scale_factor=3.0,
+        delta_pos_scale_factor=pos_scale,
+        delta_rot_scale_factor=rot_scale,
         alpha_pos=0.5,
         alpha_rot=0.5,
         use_wrist_rotation=True,

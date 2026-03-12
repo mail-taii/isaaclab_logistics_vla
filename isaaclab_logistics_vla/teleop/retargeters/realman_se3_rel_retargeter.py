@@ -24,8 +24,8 @@ class RealmanSe3RelRetargeterCfg(RetargeterCfg):
     zero_out_xy_rotation: bool = False
     use_wrist_rotation: bool = True
     use_wrist_position: bool = True
-    delta_pos_scale_factor: float = 3.0
-    delta_rot_scale_factor: float = 3.0
+    delta_pos_scale_factor: float = 8.0
+    delta_rot_scale_factor: float = 8.0
     alpha_pos: float = 0.5
     alpha_rot: float = 0.5
 
