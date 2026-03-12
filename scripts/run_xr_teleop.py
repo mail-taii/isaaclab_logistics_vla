@@ -99,11 +99,6 @@ def main() -> None:
     from isaaclab.devices.teleop_device_factory import create_teleop_device
     from isaaclab.devices.openxr import OpenXRDevice, OpenXRDeviceCfg
     from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeter, GripperRetargeterCfg
-    from isaaclab_logistics_vla.teleop.retargeters.realman_se3_rel_retargeter import (
-        RealmanSe3RelRetargeter,
-        RealmanSe3RelRelRetargeterCfg if False else None,  # type: ignore[assignment]
-    )
-    # 上面一行只是为了在类型检查时保持引用；真正的 cfg 在下方按需导入
 
     # 可选：运行时调参（不改代码）
     # TELEOP_POS_SCALE / TELEOP_ROT_SCALE 会覆盖 Se3RelRetargeterCfg 的 delta_*_scale_factor
