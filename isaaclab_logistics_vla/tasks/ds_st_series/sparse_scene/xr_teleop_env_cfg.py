@@ -83,6 +83,25 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
         near_plane=0.15,
     )
 
+    # XR 遥操作起步位姿：双臂向前伸展，便于一开始就够到工作区（弧度）
+    # Realman/Franka 7 轴：肩前摆、肘弯、腕水平，左右对称
+    XR_TELEOP_ARM_FORWARD_JOINT_POS = {
+        "l_joint1": 0.0,
+        "l_joint2": -0.4,
+        "l_joint3": 0.0,
+        "l_joint4": -1.6,
+        "l_joint5": 0.0,
+        "l_joint6": 1.2,
+        "l_joint7": 0.6,
+        "r_joint1": 0.0,
+        "r_joint2": -0.4,
+        "r_joint3": 0.0,
+        "r_joint4": -1.6,
+        "r_joint5": 0.0,
+        "r_joint6": 1.2,
+        "r_joint7": 0.6,
+    }
+
     def __post_init__(self):
         super().__post_init__()
 
@@ -93,6 +112,17 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
             ik_scale = 1.0
         self.actions.left_arm_ik.scale = ik_scale
         self.actions.right_arm_ik.scale = ik_scale
+
+        # XR 遥操作专用：机器人起始位姿改为双臂向前，起步操作更方便
+        joint_pos = getattr(self.scene.robot.init_state, "joint_pos", None)
+        if joint_pos is not None:
+            base = dict(joint_pos) if hasattr(joint_pos, "items") else {}
+            # 去掉原配置里的臂关节通配，改用显式关节角，避免冲突
+            base.pop("l_joint[1-7]", None)
+            base.pop("r_joint[1-7]", None)
+            for k, v in self.XR_TELEOP_ARM_FORWARD_JOINT_POS.items():
+                base[k] = v
+            self.scene.robot.init_state.joint_pos = base
 
         # XR 建议的仿真/渲染节奏：90Hz 物理 + 45Hz 立体渲染（按官方建议）
         self.sim.dt = 1.0 / 90.0

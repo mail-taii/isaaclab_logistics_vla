@@ -15,15 +15,23 @@ def _teleop_float_env(name: str, default: float) -> float:
         return default
 
 
-def build_realman_xr_handtracking_devices_cfg(*, sim_device: str, xr_cfg) -> DevicesCfg:
+def build_realman_xr_handtracking_devices_cfg(
+    *,
+    sim_device: str,
+    xr_cfg,
+    pos_scale: float | None = None,
+    rot_scale: float | None = None,
+) -> DevicesCfg:
     """Realman 专用 XR(handtracking) 设备配置。
 
     说明：
     - 保持与 Isaac Lab `teleop_se3_agent.py` 一致：OpenXRDevice + retargeters。
-    - 动作幅度可配：TELEOP_POS_SCALE / TELEOP_ROT_SCALE（默认 8.0），越大则手动一点机器人动得越多。
+    - 动作幅度：若传入 pos_scale/rot_scale 则优先使用，否则读 TELEOP_POS_SCALE / TELEOP_ROT_SCALE（默认 8.0）。
     """
-    pos_scale = _teleop_float_env("TELEOP_POS_SCALE", 8.0)
-    rot_scale = _teleop_float_env("TELEOP_ROT_SCALE", 8.0)
+    if pos_scale is None:
+        pos_scale = _teleop_float_env("TELEOP_POS_SCALE", 8.0)
+    if rot_scale is None:
+        rot_scale = _teleop_float_env("TELEOP_ROT_SCALE", 8.0)
 
     left = Se3RelRetargeterCfg(
         bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,

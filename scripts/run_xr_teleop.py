@@ -10,7 +10,7 @@ cd /path/to/isaaclab_logistics_vla
 ./isaaclab.sh -p scripts/run_xr_teleop.py --xr
 ```
 
-完整命令（显式指定常用参数，可按需改 asset_root_path / device）:
+完整命令（显式指定常用参数；动作幅度也可用 --teleop_* 与 --control_hz 等写在一起）:
 ```bash
 conda activate env_isaaclab
 cd /path/to/isaaclab_logistics_vla
@@ -21,22 +21,13 @@ cd /path/to/isaaclab_logistics_vla
   --control_hz 45 \
   --asset_root_path /home/junzhe/Benchmark \
   --device cuda:0 \
+  --teleop_pos_scale 8 \
+  --teleop_rot_scale 8 \
+  --teleop_ik_scale 1.0 \
   --xr
 ```
 
-可选：启动前设环境变量可调视角与动作幅度，例如:
-```bash
-# 视角（单位米；四元数 w,x,y,z）
-export TELEOP_XR_ANCHOR_POS="1.0,2.2,0"
-export TELEOP_XR_ANCHOR_ROT="0.9659,0.2588,0,0"   # 约 (-90,30,0) 欧拉
-
-# 动作幅度（越大则手动一点机器人动得越远）
-export TELEOP_POS_SCALE=8
-export TELEOP_ROT_SCALE=8
-export TELEOP_IK_SCALE=1.0
-
-./isaaclab.sh -p scripts/run_xr_teleop.py --xr
-```
+视角仍可用环境变量：TELEOP_XR_ANCHOR_POS、TELEOP_XR_ANCHOR_ROT。
 """
 
 import argparse
@@ -68,6 +59,24 @@ parser.add_argument(
     choices=["handtracking"],
     help="仅支持 handtracking（OpenXR/CloudXR）",
 )
+parser.add_argument(
+    "--teleop_pos_scale",
+    type=float,
+    default=None,
+    help="手部位移放大倍数，越大机器人动得越远（默认 8.0，也可用 TELEOP_POS_SCALE 环境变量）",
+)
+parser.add_argument(
+    "--teleop_rot_scale",
+    type=float,
+    default=None,
+    help="手部旋转放大倍数（默认 8.0，也可用 TELEOP_ROT_SCALE 环境变量）",
+)
+parser.add_argument(
+    "--teleop_ik_scale",
+    type=float,
+    default=None,
+    help="IK 末端跟随幅度（默认 1.0，也可用 TELEOP_IK_SCALE 环境变量）",
+)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -96,9 +105,35 @@ def main() -> None:
     # 扫描注册表（包含 *_XRTeleop_EnvCfg）
     register.auto_scan("isaaclab_logistics_vla.tasks")
 
+    def _teleop_scale(name: str, default: float) -> float:
+        try:
+            return float(os.environ.get(name, str(default)))
+        except (TypeError, ValueError):
+            return default
+
+    # 命令行优先，未传则用环境变量
+    teleop_pos_scale = args_cli.teleop_pos_scale if args_cli.teleop_pos_scale is not None else _teleop_scale("TELEOP_POS_SCALE", 8.0)
+    teleop_rot_scale = args_cli.teleop_rot_scale if args_cli.teleop_rot_scale is not None else _teleop_scale("TELEOP_ROT_SCALE", 8.0)
+    teleop_ik_scale = args_cli.teleop_ik_scale if args_cli.teleop_ik_scale is not None else _teleop_scale("TELEOP_IK_SCALE", 1.0)
+
     env_cfg = register.load_env_configs(args_cli.task_scene_name)()
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.device = args_cli.device
+
+    # 显式传入 scale 重建 teleop_devices；IK scale 直接写回 actions
+    if hasattr(env_cfg, "teleop_devices") and args_cli.teleop_device == "handtracking":
+        from isaaclab_logistics_vla.configs.teleop_configs.realman_xr_handtracking import (
+            build_realman_xr_handtracking_devices_cfg,
+        )
+        env_cfg.teleop_devices = build_realman_xr_handtracking_devices_cfg(
+            sim_device=env_cfg.sim.device,
+            xr_cfg=env_cfg.xr,
+            pos_scale=teleop_pos_scale,
+            rot_scale=teleop_rot_scale,
+        )
+    if hasattr(env_cfg, "actions") and hasattr(env_cfg.actions, "left_arm_ik"):
+        env_cfg.actions.left_arm_ik.scale = teleop_ik_scale
+        env_cfg.actions.right_arm_ik.scale = teleop_ik_scale
 
     # 通过环境变量覆盖 XR 视角（anchor），无需改代码即可试不同视角
     # TELEOP_XR_ANCHOR_POS=x,y,z  例如 0,0,-1.2 表示场景在眼前约 1.2m
@@ -188,34 +223,26 @@ def main() -> None:
         "R": reset_env,
     }
 
-    def _teleop_scale(name: str, default: float) -> float:
-        try:
-            return float(os.environ.get(name, str(default)))
-        except (TypeError, ValueError):
-            return default
-
     use_custom = os.environ.get("TELEOP_USE_CUSTOM_RETARGETER", "").strip().lower() in ("1", "true", "yes")
     if use_custom:
-        # 使用自定义 Realman retargeter，绕过 factory。
+        # 使用自定义 Realman retargeter，绕过 factory（scale 已在上方读取为 teleop_pos_scale / teleop_rot_scale）
         from isaaclab_logistics_vla.teleop.retargeters.realman_se3_rel_retargeter import (
             RealmanSe3RelRetargeterCfg,
             RealmanSe3RelRetargeter,
         )
 
-        pos_scale = _teleop_scale("TELEOP_POS_SCALE", 8.0)
-        rot_scale = _teleop_scale("TELEOP_ROT_SCALE", 8.0)
         dev_cfg = OpenXRDeviceCfg(xr_cfg=env_cfg.xr)
         left_cfg = RealmanSe3RelRetargeterCfg(
             bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT,
             sim_device=env_cfg.sim.device,
-            delta_pos_scale_factor=pos_scale,
-            delta_rot_scale_factor=rot_scale,
+            delta_pos_scale_factor=teleop_pos_scale,
+            delta_rot_scale_factor=teleop_rot_scale,
         )
         right_cfg = RealmanSe3RelRetargeterCfg(
             bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT,
             sim_device=env_cfg.sim.device,
-            delta_pos_scale_factor=pos_scale,
-            delta_rot_scale_factor=rot_scale,
+            delta_pos_scale_factor=teleop_pos_scale,
+            delta_rot_scale_factor=teleop_rot_scale,
         )
         left = RealmanSe3RelRetargeter(left_cfg)
         right = RealmanSe3RelRetargeter(right_cfg)
@@ -247,8 +274,8 @@ def main() -> None:
     print("[XR Teleop] 请在 AVP 上点击 Play 后再动手指，否则机器人不会跟随。")
     print("[XR Teleop] 若机器人一直不动：1) 确认 AVP 上为 Play 状态（非 Stop）；2) 可设 TELEOP_FORCE_ACTIVE=1 强制开启遥操作以排查。")
     print(
-        "[XR Teleop] 动作幅度可配：TELEOP_POS_SCALE=%.1f TELEOP_ROT_SCALE=%.1f TELEOP_IK_SCALE=%.1f（可通过环境变量覆盖）"
-        % (_teleop_scale("TELEOP_POS_SCALE", 8.0), _teleop_scale("TELEOP_ROT_SCALE", 8.0), _teleop_scale("TELEOP_IK_SCALE", 1.0))
+        "[XR Teleop] 动作幅度：pos_scale=%.1f rot_scale=%.1f ik_scale=%.1f（可用 --teleop_pos_scale 等或环境变量）"
+        % (teleop_pos_scale, teleop_rot_scale, teleop_ik_scale)
     )
     if os.environ.get("TELEOP_DEBUG_RAW", "").strip() in ("1", "true", "yes"):
         print("[XR Teleop] TELEOP_DEBUG_RAW=1：将打印 OpenXR 原始 wrist/palm 位姿变化（若可用）")
