@@ -183,7 +183,8 @@ def main() -> None:
         grip_right = GripperRetargeter(
             GripperRetargeterCfg(bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT, sim_device=env_cfg.sim.device)
         )
-        teleop_interface = OpenXRDevice(cfg=dev_cfg, retargeters=[left, grip_left, right, grip_right])
+        # 顺序须与 env 一致：left_arm, right_arm, left_gripper, right_gripper
+        teleop_interface = OpenXRDevice(cfg=dev_cfg, retargeters=[left, right, grip_left, grip_right])
         # 注册 XR UI 的 START/STOP/RESET 回调
         for key, cb in teleoperation_callbacks.items():
             if key in ("START", "STOP", "RESET"):

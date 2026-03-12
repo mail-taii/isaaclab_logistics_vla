@@ -38,15 +38,14 @@ def build_realman_xr_handtracking_devices_cfg(*, sim_device: str, xr_cfg) -> Dev
         sim_device=sim_device,
     )
 
+    # 顺序必须与 env actions 一致：left_arm_ik, right_arm_ik, left_gripper, right_gripper（否则双臂/夹爪会错位）
     return DevicesCfg(
         devices={
             "handtracking": OpenXRDeviceCfg(
                 retargeters=[
-                    # 左手 → 左臂末端增量 + 左夹爪
-                    left,
+                    left,   # 左臂 6D
+                    right,  # 右臂 6D
                     GripperRetargeterCfg(bound_hand=OpenXRDevice.TrackingTarget.HAND_LEFT, sim_device=sim_device),
-                    # 右手 → 右臂末端增量 + 右夹爪
-                    right,
                     GripperRetargeterCfg(bound_hand=OpenXRDevice.TrackingTarget.HAND_RIGHT, sim_device=sim_device),
                 ],
                 sim_device=sim_device,
