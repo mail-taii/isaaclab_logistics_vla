@@ -221,7 +221,6 @@ TELEOP_POS_SCALE=5 TELEOP_ROT_SCALE=5 TELEOP_IK_SCALE=0.8 ./isaaclab.sh -p scrip
 | `TELEOP_FORCE_ACTIVE=1` | 强制遥操作始终开启，忽略 AVP 的 Stop，用于排查「机器人不动」是否因误触 Stop |
 | `TELEOP_USE_CUSTOM_RETARGETER=1` | 使用自定义 Realman retargeter（一般用默认即可） |
 | `TELEOP_DEBUG_RAW=1` | 打印 OpenXR 原始 wrist/palm 位姿，便于调试手部数据 |
-| `TELEOP_REALMAN_AXIS_MAP=lerobot` | 手部→机器人轴映射为 [-z,-x,+y]；若「往前伸」方向反了或卡住可尝试开启或关闭 |
 | `TELEOP_POS_FRAME=xr_yup_negz_fwd` | **与 curobo/场景世界系对齐**：XR 常见为 Y-up、-Z=前，直接加会给世界 Z 导致「上下能动、往前卡住」。此选项将位置增量从 XR 系转为世界系 (world_x=-xr_z, world_y=xr_x, world_z=xr_y)。 |
 
 ---
