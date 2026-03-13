@@ -13,14 +13,24 @@ from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
-# SKU 定义: (usd_path, count, scale)，仅方盒类物品
-SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'], 4, 0.6),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'], 4, 0.6),
-    "plastic_package": (PLASTIC_PACKAGE_PARAMS['USD_PATH'], 4, 0.4),
-    "sf_big": (SF_BIG_PARAMS['USD_PATH'], 4, 0.3),
-    "sf_small": (SF_SMALL_PARAMS['USD_PATH'], 4, 0.3),
-}
+# -----------------------------------------------------------------------
+# 在这里声明本场景使用的 SKU 列表。
+# command_cfg.py 会从这里导入，不要反向引用 command_cfg。
+# -----------------------------------------------------------------------
+STACK_SCENE_OBJECTS = ['cracker_box', 'sugar_box', 'plastic_package', 'sf_small','rubikscube_base0']
+
+# 每种 SKU 的默认实例数（可按需调整，也可在 constant.py 每个 PARAMS 里加 STACK_COUNT 覆盖）
+DEFAULT_SKU_COUNT = 4
+
+# SKU 定义: (usd_path, count, scale)，由 STACK_SCENE_OBJECTS + constant.SKU_CONFIG 自动生成
+SKU_DEFINITIONS = {}
+for _sku_name in STACK_SCENE_OBJECTS:
+    _params = SKU_CONFIG[_sku_name]
+    SKU_DEFINITIONS[_sku_name] = (
+        _params['USD_PATH'],
+        _params.get('STACK_COUNT', DEFAULT_SKU_COUNT),
+        _params.get('STACK_SCALE', 1.0),
+    )
 
 
 @configclass

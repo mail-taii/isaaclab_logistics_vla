@@ -22,16 +22,6 @@ if TYPE_CHECKING:
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
-# SKU 名称片段 → constant 参数字典的映射（新增 SKU 时在此处加一行即可）
-_SKU_PARAMS_MAP = {
-    "cracker": CRACKER_BOX_PARAMS,
-    "sugar": SUGER_BOX_PARAMS,
-    "plastic_package": PLASTIC_PACKAGE_PARAMS,
-    "sf_big": SF_BIG_PARAMS,
-    "sf_small": SF_SMALL_PARAMS,
-}
-
-
 class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
     """
     堆叠场景的 CommandTerm（含冗余物品）
@@ -92,34 +82,29 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
     def _get_raw_params(self, obj_name: str) -> dict:
         """
         获取缩放后的 SKU 物理参数（尺寸 + STACK_ORIENT）。
-        新增 SKU 时：在 constant.py 加参数字典，在 _SKU_PARAMS_MAP 加映射。
+        方案 B：在 constant.py 中为每个 SKU 定义独立的参数字典，并统一挂在 SKU_CONFIG 中。
+        这里根据 object_name 中包含的规范化 sku 名（如 "cracker_box"）在 SKU_CONFIG 中查找。
         """
-        # 优先从 scene_cfg.SKU_DEFINITIONS 里读取每个 SKU 独立配置的 scale，
-        # 若未配置则回退到类属性 SCALE。
-        scale = self._get_scale_for_obj(obj_name)
-        for key, params in _SKU_PARAMS_MAP.items():
-            if key in obj_name:
-                return {
-                    'X_LENGTH': params['X_LENGTH'] * scale,
-                    'Y_LENGTH': params['Y_LENGTH'] * scale,
-                    'Z_LENGTH': params['Z_LENGTH'] * scale,
-                    'STACK_ORIENT': params['STACK_ORIENT'],
-                }
-        # 默认回退
-        p = CRACKER_BOX_PARAMS
-        return {
-            'X_LENGTH': p['X_LENGTH'] * scale,
-            'Y_LENGTH': p['Y_LENGTH'] * scale,
-            'Z_LENGTH': p['Z_LENGTH'] * scale,
-            'STACK_ORIENT': p['STACK_ORIENT'],
-        }
-
-    def _get_scale_for_obj(self, obj_name: str) -> float:
-        """根据物体名称从 scene_cfg.SKU_DEFINITIONS 中获取对应的缩放倍率。"""
-        for sku_name, (_usd_path, _count, scale) in SKU_DEFINITIONS.items():
+        # 优先：根据 SKU_CONFIG 里的规范名匹配
+        params = None
+        for sku_name, p in SKU_CONFIG.items():
             if sku_name in obj_name:
-                return float(scale)
-        return float(self.SCALE)
+                params = p
+                break
+
+        # 若未匹配到，则回退到默认 CRACKER_BOX_PARAMS，以保持行为稳定
+        if params is None:
+            params = CRACKER_BOX_PARAMS
+
+        # 缩放倍率优先使用参数里的 STACK_SCALE，否则退回类属性 SCALE
+        scale = float(params.get('STACK_SCALE', self.SCALE))
+
+        return {
+            'X_LENGTH': params['X_LENGTH'] * scale,
+            'Y_LENGTH': params['Y_LENGTH'] * scale,
+            'Z_LENGTH': params['Z_LENGTH'] * scale,
+            'STACK_ORIENT': params['STACK_ORIENT'],
+        }
 
     def _compute_stack_params(self, params: dict) -> dict:
         """根据缩放后尺寸计算 base_area / stack_height / stack_orient"""

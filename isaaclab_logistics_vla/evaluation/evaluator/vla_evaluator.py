@@ -115,10 +115,10 @@ class VLA_Evaluator:
                 
                     default_state_tensor = robot_asset.data.root_state_w
                     
-                    print("\n" + "="*50)
-                    print("Default Root State of 'robot' Asset:")
-                    print(f"Shape: {default_state_tensor.shape}")
-                    print(f"Data:\n{default_state_tensor[:, 0:3]}")
-                    print(f"Reward :\n{rew}")
-                    print("="*50 + "\n")
+                    #print("\n" + "="*50)
+                    #print("Default Root State of 'robot' Asset:")
+                    #print(f"Shape: {default_state_tensor.shape}")
+                    #print(f"Data:\n{default_state_tensor[:, 0:3]}")
+                    #print(f"Reward :\n{rew}")
+                    #print("="*50 + "\n")
             

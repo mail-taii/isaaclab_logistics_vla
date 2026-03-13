@@ -15,8 +15,8 @@ parser.add_argument(
     default=20,
     help="Number of episodes to run PER environment.",
 )
-parser.add_argument("--asset_root_path", type=str, default="/home/wst/model_files/benchmark")
-parser.add_argument("--task_scene_name", type=str, default="Spawn_ss_st_sparse_with_obstacles_EnvCfg")
+parser.add_argument("--asset_root_path", type=str, default="/home/junzhe/code/model/Benchmark")
+parser.add_argument("--task_scene_name", type=str, default="Spawn_ss_st_dense_EnvCfg")
 args_cli, _ = parser.parse_known_args()
 
 app_launcher = AppLauncher(args_cli)
