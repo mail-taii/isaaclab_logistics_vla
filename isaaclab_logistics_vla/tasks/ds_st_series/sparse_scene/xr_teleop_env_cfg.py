@@ -83,23 +83,23 @@ class Spawn_ds_st_sparse_XRTeleop_EnvCfg(Spawn_ds_st_sparse_EnvCfg):
         near_plane=0.15,
     )
 
-    # XR 遥操作起步位姿：双臂向前伸展，便于一开始就够到工作区（弧度）
-    # Realman/Franka 7 轴：肩前摆、肘弯、腕水平，左右对称
+    # XR 遥操作起步位姿：双臂自然向前伸，便于人类站在机器人正前方时对齐（弧度）
+    # Realman/Franka 7 轴：略抬肩、适度弯肘、手腕略内旋，左右对称
     XR_TELEOP_ARM_FORWARD_JOINT_POS = {
         "l_joint1": 0.0,
-        "l_joint2": -0.4,
+        "l_joint2": -0.6,   # 肩稍微抬起
         "l_joint3": 0.0,
-        "l_joint4": -1.6,
+        "l_joint4": -1.2,   # 肘向前弯曲，不是完全伸直
         "l_joint5": 0.0,
-        "l_joint6": 1.2,
-        "l_joint7": 0.6,
+        "l_joint6": 1.0,    # 手腕略抬
+        "l_joint7": 0.3,    # 手腕略内旋，姿态更自然
         "r_joint1": 0.0,
-        "r_joint2": -0.4,
+        "r_joint2": -0.6,
         "r_joint3": 0.0,
-        "r_joint4": -1.6,
+        "r_joint4": -1.2,
         "r_joint5": 0.0,
-        "r_joint6": 1.2,
-        "r_joint7": 0.6,
+        "r_joint6": 1.0,
+        "r_joint7": 0.3,
     }
 
     def __post_init__(self):
