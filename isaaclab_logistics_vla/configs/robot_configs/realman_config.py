@@ -36,15 +36,29 @@ class RealmanFrankaEE(ArticulationCfg):
     )
 
     init_state=ArticulationCfg.InitialStateCfg(
-            joint_pos={"l_joint[1-7]": 0.0,
-                       "r_joint[1-7]": 0.0,
-                    "left_left_joint":0.04,
-                    "left_right_joint":0.04,
-                    "right_right_joint":0.04,
-                    "right_left_joint":0.04,
-                    "platform_joint": 0.8},  # 添加平台关节的初始位置
+            joint_pos={
+                "l_joint1": 1.85,
+                "l_joint2": 1.4,
+                "l_joint3": 0.6,
+                "l_joint4": 0.2,
+                "l_joint5": 0.0,
+                "l_joint6": 0.0,
+                "l_joint7": -0.5,
+                "r_joint1": -1.85,
+                "r_joint2": -1.4,
+                "r_joint3": -0.6,
+                "r_joint4": 0.2,
+                "r_joint5": 0.0,
+                "r_joint6": 0.0,
+                "r_joint7": 0.5,
+                "left_left_joint": 0.04,
+                "left_right_joint": 0.04,
+                "right_right_joint": 0.04,
+                "right_left_joint": 0.04,
+                "platform_joint": 0.8,  # 升降柱初始高度
+            },
             pos=(-0.71, 0, 0.216),
-            rot= euler2quat('z',-90)    #正对x轴正方向
+            rot= euler2quat('z',-90),    # 正对 x 轴正方向
         )
 
     actuators={
