@@ -45,7 +45,7 @@ for sku_name, (usd_path, count, scale) in SKU_DEFINITIONS.items():
                 usd_path=usd_path,
                 scale=(scale, scale, scale),
                 rigid_props=schemas.RigidBodyPropertiesCfg(
-                    sleep_threshold=0.05
+                    sleep_threshold=0.1
                 ),
             ),
             init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0), rot=(1, 0, 0, 0)),

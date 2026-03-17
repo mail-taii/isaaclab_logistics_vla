@@ -325,7 +325,7 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
             for stack_idx in range(max_stacks):
                 slot_idx = slot_perm[stack_idx % 4].item()
                 anchor = anchors[slot_idx]
-                z_offset = 0.015  # 箱底厚度
+                z_offset = 0.025  # 箱底厚度
 
                 for pos in range(max_per_stack):
                     obj_idx = layout[stack_idx, pos].item()
@@ -362,7 +362,7 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                         relative_quat=relative_quat,
                     )
 
-                    z_offset += stack_height
+                    z_offset += stack_height+0.01
 
     # ------------------------------------------------------------------ #
     #                       辅助方法                                       #
