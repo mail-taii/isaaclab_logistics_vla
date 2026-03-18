@@ -77,6 +77,24 @@ parser.add_argument(
     default=None,
     help="IK 末端跟随幅度（默认 1.0，也可用 TELEOP_IK_SCALE 环境变量）",
 )
+parser.add_argument(
+    "--teleop_deadzone_pos",
+    type=float,
+    default=None,
+    help="位置增量死区（米），绝对值小于该值的 dx/dy/dz 将被置零（默认 0.001，也可用 TELEOP_DEADZONE_POS 环境变量）",
+)
+parser.add_argument(
+    "--teleop_deadzone_rot",
+    type=float,
+    default=None,
+    help="姿态增量死区（弧度），绝对值小于该值的 rx/ry/rz 将被置零（默认 0.001，也可用 TELEOP_DEADZONE_ROT 环境变量）",
+)
+parser.add_argument(
+    "--teleop_filter_beta",
+    type=float,
+    default=None,
+    help="一阶低通滤波系数 beta（0~1，越接近 1 越平滑、越黏；默认 0.8，也可用 TELEOP_FILTER_BETA 环境变量）",
+)
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -119,6 +137,9 @@ def main() -> None:
     teleop_pos_scale_x = _teleop_scale("TELEOP_POS_SCALE_X", 1.0)
     teleop_pos_scale_y = _teleop_scale("TELEOP_POS_SCALE_Y", 1.0)
     teleop_pos_scale_z = _teleop_scale("TELEOP_POS_SCALE_Z", 1.0)
+    teleop_deadzone_pos = args_cli.teleop_deadzone_pos if args_cli.teleop_deadzone_pos is not None else _teleop_scale("TELEOP_DEADZONE_POS", 1e-3)
+    teleop_deadzone_rot = args_cli.teleop_deadzone_rot if args_cli.teleop_deadzone_rot is not None else _teleop_scale("TELEOP_DEADZONE_ROT", 1e-3)
+    teleop_filter_beta = args_cli.teleop_filter_beta if args_cli.teleop_filter_beta is not None else _teleop_scale("TELEOP_FILTER_BETA", 0.8)
     # 位置增量坐标系：与 curobo_reach_box_policy / 场景一致为世界系 (X,Y,Z)。
     # 若 XR 运行时为 Y-up、-Z 前，则「往前伸」会变成世界 Z，导致上下能动、往前卡住。可试 TELEOP_POS_FRAME=xr_yup_negz_fwd
     teleop_pos_frame = os.environ.get("TELEOP_POS_FRAME", "").strip().lower()
@@ -311,6 +332,7 @@ def main() -> None:
     _logged_action_shape = False
     _last_debug_time = [time.perf_counter()]  # 用 list 以便在 closure 里更新
     _last_paused_reminder = [time.perf_counter()]
+    prev_action = [None]  # 上一帧 teleop action，用于低通滤波
     dt = 1.0 / float(args_cli.control_hz)
 
     while simulation_app.is_running():
@@ -370,6 +392,30 @@ def main() -> None:
                                 print(f"[XR Teleop] raw left(wrist,palm)={lw},{lp} right(wrist,palm)={rw},{rp}")
                             except Exception:
                                 pass
+                    # 死区 + 一阶低通滤波：仅对两臂的 2×6D 增量（前 12 维）生效，夹爪不处理
+                    if action.numel() >= 12:
+                        a = action.clone()
+                        # 1) 死区：抑制极小抖动
+                        for start in (0, 6):
+                            # 位置增量 [dx,dy,dz]
+                            pos_slice = a[start : start + 3]
+                            mask_pos = pos_slice.abs() < teleop_deadzone_pos
+                            pos_slice[mask_pos] = 0.0
+                            a[start : start + 3] = pos_slice
+                            # 姿态增量 [rx,ry,rz]
+                            rot_slice = a[start + 3 : start + 6]
+                            mask_rot = rot_slice.abs() < teleop_deadzone_rot
+                            rot_slice[mask_rot] = 0.0
+                            a[start + 3 : start + 6] = rot_slice
+                        # 2) 一阶低通：a_smooth = beta * a_prev + (1-beta) * a_now
+                        if 0.0 < teleop_filter_beta < 1.0:
+                            if prev_action[0] is None or prev_action[0].shape != a.shape:
+                                prev_action[0] = a
+                            else:
+                                a = teleop_filter_beta * prev_action[0] + (1.0 - teleop_filter_beta) * a
+                                prev_action[0] = a
+                        action = a
+
                     # 位置增量坐标系转换：与 curobo/场景世界系一致（见 curobo_reach_box_policy 世界系、planner 臂基系纯减法）
                     # 若 XR 为 Y-up、-Z=前，则「往前伸」会变成世界 Z，导致上下能动、往前卡住。试 TELEOP_POS_FRAME=xr_yup_negz_fwd
                     if teleop_pos_frame == "xr_yup_negz_fwd" and action.numel() >= 9:
