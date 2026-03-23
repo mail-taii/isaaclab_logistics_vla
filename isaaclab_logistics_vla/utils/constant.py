@@ -322,9 +322,9 @@ COFFEEBOX_BASE0 = {
     'Y_LENGTH': 0.091,
     'Z_LENGTH': 0.13,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (90, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -338,7 +338,7 @@ COFFEEBOX_BASE1 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.7,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -352,7 +352,7 @@ COFFEEBOX_BASE2 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.7,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -366,7 +366,7 @@ COFFEEBOX_BASE3 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.7,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -380,7 +380,7 @@ COFFEEBOX_BASE4 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.6,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -392,9 +392,9 @@ COFFEEBOX_BASE5 = {
     'Y_LENGTH': 0.031,
     'Z_LENGTH': 0.11,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (90, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.6,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -910,9 +910,9 @@ NOTEBOOK_BASE0 = {
     'Y_LENGTH': 0.125,
     'Z_LENGTH': 0.02,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.7,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -924,9 +924,9 @@ NOTEBOOK_BASE1 = {
     'Y_LENGTH': 0.129,
     'Z_LENGTH': 0.022,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.7,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -938,9 +938,9 @@ NOTEBOOK_BASE2 = {
     'Y_LENGTH': 0.129,
     'Z_LENGTH': 0.02,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.7,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1066,7 +1066,7 @@ PHONE_BASE4 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.6,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1316,7 +1316,7 @@ PLAYINGCARDS_BASE1 = {
     'Y_LENGTH': 0.078,
     'Z_LENGTH': 0.024,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
     'STACK_SCALE': 1,
     'SPARSE_SCALE': 1,
@@ -1330,7 +1330,7 @@ PLAYINGCARDS_BASE2 = {
     'Y_LENGTH': 0.076,
     'Z_LENGTH': 0.024,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
     'STACK_SCALE': 1,
     'SPARSE_SCALE': 1,
@@ -1344,9 +1344,9 @@ REMOTECONTROL_BASE0 = {
     'Y_LENGTH': 0.048,
     'Z_LENGTH': 0.02,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1358,9 +1358,9 @@ REMOTECONTROL_BASE1 = {
     'Y_LENGTH': 0.057,
     'Z_LENGTH': 0.022,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1374,7 +1374,7 @@ REMOTECONTROL_BASE2 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1388,7 +1388,7 @@ REMOTECONTROL_BASE3 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1402,7 +1402,7 @@ REMOTECONTROL_BASE4 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1416,7 +1416,7 @@ REMOTECONTROL_BASE5 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1694,7 +1694,7 @@ SOAP_BASE0 = {
     'Y_LENGTH': 0.062,
     'Z_LENGTH': 0.02,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
     'STACK_SCALE': 1,
     'SPARSE_SCALE': 1,
@@ -1708,7 +1708,7 @@ SOAP_BASE1 = {
     'Y_LENGTH': 0.062,
     'Z_LENGTH': 0.02,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
     'STACK_SCALE': 1,
     'SPARSE_SCALE': 1,
@@ -1722,7 +1722,7 @@ SOAP_BASE2 = {
     'Y_LENGTH': 0.092,
     'Z_LENGTH': 0.078,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
     'STACK_SCALE': 1,
     'SPARSE_SCALE': 1,
@@ -1736,7 +1736,7 @@ SOAP_BASE3 = {
     'Y_LENGTH': 0.072,
     'Z_LENGTH': 0.073,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
     'STACK_SCALE': 1,
     'SPARSE_SCALE': 1,
@@ -1974,9 +1974,9 @@ TEABOX_BASE0 = {
     'Y_LENGTH': 0.101,
     'Z_LENGTH': 0.11,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (0, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.6,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -1990,7 +1990,7 @@ TEABOX_BASE1 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.6,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -2002,9 +2002,9 @@ TEABOX_BASE2 = {
     'Y_LENGTH': 0.061,
     'Z_LENGTH': 0.15,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (90, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.7,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -2018,7 +2018,7 @@ TEABOX_BASE3 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.5,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -2046,7 +2046,7 @@ TEABOX_BASE5 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.6,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -2436,9 +2436,9 @@ WOODENBLOCK_BASE3 = {
     'Y_LENGTH': 0.037,
     'Z_LENGTH': 0.052,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (0, 0, 0),
+    'STACK_ORIENT': (90, 0, 90),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }

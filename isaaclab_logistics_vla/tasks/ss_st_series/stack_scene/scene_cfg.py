@@ -19,10 +19,17 @@ from isaaclab_logistics_vla.utils.constant import *
 # -----------------------------------------------------------------------
 STACK_SCENE_OBJECTS = ['cracker_box', 'sugar_box', 'plastic_package',  'sf_small',
                         'rubikscube_base0','rubikscube_base1','rubikscube_base2',
-                        'phone_base0','phone_base1','phone_base2','phone_base3','phone_base4'
+                        'phone_base0','phone_base1','phone_base2','phone_base3','phone_base4',
+                        'remotecontrol_base0','remotecontrol_base1','remotecontrol_base2','remotecontrol_base3','remotecontrol_base4','remotecontrol_base5','remotecontrol_base6',
+                         'playingcards_base0','playingcards_base1','playingcards_base2',
+                          'notebook_base0','notebook_base1','notebook_base2',
+                          'soap_base1',
+                          'teabox_base1',
+                          'coffeebox_base1','coffeebox_base2','coffeebox_base4',
+                          'smallspeaker_base1',
+                          'woodenblock_base0',
                     ]
 
-#STACK_SCENE_OBJECTS = ['rubikscube_base0','rubikscube_base2']
 
 # 每种 SKU 的默认实例数（可按需调整，也可在 constant.py 每个 PARAMS 里加 STACK_COUNT 覆盖）
 DEFAULT_SKU_COUNT = 4

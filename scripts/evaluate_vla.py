@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser(description="VLA-benchmark for Isaac Lab enviro
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--policy", type=str, default='random', help="Name of the policy.")
 parser.add_argument("--device", type=str, default='cuda:0')

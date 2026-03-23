@@ -336,7 +336,7 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                     stack_height = params['stack_height']
 
                     # 位置：锚点 + 轻微 XY 抖动
-                    jitter_xy = 0.005
+                    jitter_xy = 0.00
                     rand_x = (torch.rand(1, device=self.device).item() * 2 - 1) * jitter_xy
                     rand_y = (torch.rand(1, device=self.device).item() * 2 - 1) * jitter_xy
 
@@ -348,7 +348,7 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
 
                     # 朝向：STACK_ORIENT + 轻微 Z 轴旋转抖动（±5°）
                     orient = params['stack_orient']
-                    jitter_yaw = (torch.rand(1, device=self.device).item() * 2 - 1) * 5
+                    jitter_yaw = (torch.rand(1, device=self.device).item() * 2 - 1) * 0
                     relative_quat = euler_to_quat_isaac(
                         orient[0], orient[1], orient[2] + jitter_yaw
                     )
@@ -361,8 +361,8 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                         relative_pos=relative_pos,
                         relative_quat=relative_quat,
                     )
-
-                    z_offset += stack_height+0.01
+                    
+                    z_offset += stack_height+0.02
 
     # ------------------------------------------------------------------ #
     #                       辅助方法                                       #

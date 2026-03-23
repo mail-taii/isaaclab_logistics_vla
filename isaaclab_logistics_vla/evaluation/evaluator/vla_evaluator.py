@@ -76,6 +76,9 @@ class VLA_Evaluator:
         actions[:, 14] = 0.0
         actions[:, 15] = 0.0
 
+        if self.step_counter % 100 == 5:
+            time.sleep(2)
+
         if self.step_counter < self.lift_duration:
             pass 
             
@@ -106,9 +109,8 @@ class VLA_Evaluator:
             with torch.inference_mode():
                 actions = self.generate_action(None)
                 obs, rew, terminated, truncated, info = self.env.step(actions)
-                # if i<10:
-                #     time.sleep(2)
-                i+=1
+
+               
                 #Atime.sleep(1)
                 if i%100==0 or i<10:
                     isaac_env = self.env.unwrapped
