@@ -1,0 +1,142 @@
+# Curobo 右臂 MotionGen 标准配置
+# collision_spheres 为 MotionGen 规划梯度计算所必需
+# 臂基偏移：同 realman_left_arm，arm_base_offset_in_root = (0, -0.11663, 0.271)。
+robot_cfg:
+  kinematics:
+    use_usd_kinematics: false
+    urdf_path: PLACEHOLDER_URDF
+    asset_root_path: PLACEHOLDER_ASSET_ROOT
+    base_link: dual_rm_75b_description_platform_base_link
+    ee_link: r_link7
+    # 锁定夹爪关节：collision_link_names 含 finger 时运动链延伸至 right_*_joint，必须锁定
+    lock_joints:
+      right_left_joint: 0.0
+      right_right_joint: 0.0
+    collision_spheres: spheres/realman_right_arm.yml
+    collision_sphere_buffer: 0.004
+    collision_link_names:
+    - dual_rm_75b_description_platform_base_link
+    - dual_rm_75b_description_r_link1
+    - dual_rm_75b_description_r_link2
+    - dual_rm_75b_description_r_link3
+    - dual_rm_75b_description_r_link4
+    - dual_rm_75b_description_r_link5
+    - dual_rm_75b_description_r_link6
+    - r_link7
+    - panda_right_hand
+    - panda_right_leftfinger
+    - panda_right_rightfinger
+    mesh_link_names:
+    - dual_rm_75b_description_platform_base_link
+    - dual_rm_75b_description_r_link1
+    - dual_rm_75b_description_r_link2
+    - dual_rm_75b_description_r_link3
+    - dual_rm_75b_description_r_link4
+    - dual_rm_75b_description_r_link5
+    - dual_rm_75b_description_r_link6
+    - r_link7
+    - panda_right_hand
+    - panda_right_leftfinger
+    - panda_right_rightfinger
+    self_collision_ignore:
+      dual_rm_75b_description_platform_base_link:
+      - dual_rm_75b_description_r_link1
+      - dual_rm_75b_description_r_link2
+      - dual_rm_75b_description_r_link3
+      dual_rm_75b_description_r_link1:
+      - dual_rm_75b_description_platform_base_link
+      - dual_rm_75b_description_r_link2
+      - dual_rm_75b_description_r_link3
+      - dual_rm_75b_description_r_link4
+      dual_rm_75b_description_r_link2:
+      - dual_rm_75b_description_platform_base_link
+      - dual_rm_75b_description_r_link1
+      - dual_rm_75b_description_r_link3
+      - dual_rm_75b_description_r_link4
+      - dual_rm_75b_description_r_link5
+      dual_rm_75b_description_r_link3:
+      - dual_rm_75b_description_r_link1
+      - dual_rm_75b_description_r_link2
+      - dual_rm_75b_description_r_link4
+      - dual_rm_75b_description_r_link5
+      - dual_rm_75b_description_r_link6
+      dual_rm_75b_description_r_link4:
+      - dual_rm_75b_description_r_link2
+      - dual_rm_75b_description_r_link3
+      - dual_rm_75b_description_r_link5
+      - dual_rm_75b_description_r_link6
+      - r_link7
+      dual_rm_75b_description_r_link5:
+      - dual_rm_75b_description_r_link3
+      - dual_rm_75b_description_r_link4
+      - dual_rm_75b_description_r_link6
+      - r_link7
+      - panda_right_hand
+      dual_rm_75b_description_r_link6:
+      - dual_rm_75b_description_r_link4
+      - dual_rm_75b_description_r_link5
+      - r_link7
+      - panda_right_hand
+      r_link7:
+      - dual_rm_75b_description_r_link5
+      - dual_rm_75b_description_r_link6
+      - panda_right_hand
+      panda_right_hand:
+      - dual_rm_75b_description_r_link5
+      - dual_rm_75b_description_r_link6
+      - r_link7
+      - panda_right_leftfinger
+      - panda_right_rightfinger
+      panda_right_leftfinger:
+      - panda_right_hand
+      - panda_right_rightfinger
+      panda_right_rightfinger:
+      - panda_right_hand
+      - panda_right_leftfinger
+    self_collision_buffer:
+      dual_rm_75b_description_platform_base_link: 0.1
+      dual_rm_75b_description_r_link1: 0.05
+      dual_rm_75b_description_r_link2: 0.05
+      dual_rm_75b_description_r_link3: 0.05
+      dual_rm_75b_description_r_link4: 0.05
+      dual_rm_75b_description_r_link5: 0.05
+      dual_rm_75b_description_r_link6: 0.05
+      r_link7: 0.05
+      panda_right_hand: 0.02
+      panda_right_leftfinger: 0.0
+      panda_right_rightfinger: 0.0
+    cspace:
+      joint_names:
+      - r_joint1
+      - r_joint2
+      - r_joint3
+      - r_joint4
+      - r_joint5
+      - r_joint6
+      - r_joint7
+      retract_config:
+      - 3.1
+      - 0.3
+      - 0.8
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      null_space_weight:
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      cspace_distance_weight:
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      max_acceleration: 15.0
+      max_jerk: 500.0

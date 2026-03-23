@@ -148,12 +148,14 @@
     <parent link="panda_right_hand"/>
     <child link="panda_right_leftfinger"/>
     <axis xyz="1. 0. 0."/>
+    <limit lower="-6.28318530718" upper="6.28318530718" effort="10." velocity="5."/>
   </joint>
   <joint name="right_right_joint" type="continuous">
     <origin xyz="-0. 0. 0.0599976" rpy="-0. 0. 3.1415927"/>
     <parent link="panda_right_hand"/>
     <child link="panda_right_rightfinger"/>
     <axis xyz="1. 0. 0."/>
+    <limit lower="-6.28318530718" upper="6.28318530718" effort="10." velocity="5."/>
   </joint>
   <link name="dual_rm_75b_description">
     <visual>

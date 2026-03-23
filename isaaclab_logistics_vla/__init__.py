@@ -32,3 +32,5 @@ _BLACKLIST_PKGS = ["utils"]
 import_packages(__name__, _BLACKLIST_PKGS)
 
 import isaaclab_logistics_vla.configs.robot_configs.realman_config
+import isaaclab_logistics_vla.configs.robot_configs.ur5e_config
+import isaaclab_logistics_vla.configs.action_configs  # 动作配置独立成包，与 camera_configs 一致
