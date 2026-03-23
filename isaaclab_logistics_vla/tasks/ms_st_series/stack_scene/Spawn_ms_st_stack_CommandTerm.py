@@ -22,16 +22,6 @@ if TYPE_CHECKING:
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
-# SKU 名称片段 → constant 参数字典的映射
-_SKU_PARAMS_MAP = {
-    "cracker": CRACKER_BOX_PARAMS,
-    "sugar": SUGER_BOX_PARAMS,
-    "plastic_package": PLASTIC_PACKAGE_PARAMS,
-    "sf_big": SF_BIG_PARAMS,
-    "sf_small": SF_SMALL_PARAMS,
-}
-
-
 class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
     """
     多源-单目标 堆叠场景的 CommandTerm（含冗余物品）
@@ -83,28 +73,27 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
         return cache
 
     def _get_raw_params(self, obj_name: str) -> dict:
-        scale = self._get_scale_for_obj(obj_name)
-        for key, params in _SKU_PARAMS_MAP.items():
-            if key in obj_name:
-                return {
-                    'X_LENGTH': params['X_LENGTH'] * scale,
-                    'Y_LENGTH': params['Y_LENGTH'] * scale,
-                    'Z_LENGTH': params['Z_LENGTH'] * scale,
-                    'STACK_ORIENT': params['STACK_ORIENT'],
-                }
-        p = CRACKER_BOX_PARAMS
-        return {
-            'X_LENGTH': p['X_LENGTH'] * scale,
-            'Y_LENGTH': p['Y_LENGTH'] * scale,
-            'Z_LENGTH': p['Z_LENGTH'] * scale,
-            'STACK_ORIENT': p['STACK_ORIENT'],
-        }
-
-    def _get_scale_for_obj(self, obj_name: str) -> float:
-        for sku_name, (_usd_path, _count, scale) in SKU_DEFINITIONS.items():
+        """
+        获取缩放后的 SKU 物理参数（尺寸 + STACK_ORIENT）。
+        根据 object_name 中包含的规范化 sku 名在 SKU_CONFIG 中查找。
+        """
+        params = None
+        for sku_name, p in SKU_CONFIG.items():
             if sku_name in obj_name:
-                return float(scale)
-        return float(self.SCALE)
+                params = p
+                break
+
+        if params is None:
+            params = CRACKER_BOX_PARAMS
+
+        scale = float(params.get('STACK_SCALE', self.SCALE))
+
+        return {
+            'X_LENGTH': params['X_LENGTH'] * scale,
+            'Y_LENGTH': params['Y_LENGTH'] * scale,
+            'Z_LENGTH': params['Z_LENGTH'] * scale,
+            'STACK_ORIENT': params['STACK_ORIENT'],
+        }
 
     def _compute_stack_params(self, params: dict) -> dict:
         x, y, z = params['X_LENGTH'], params['Y_LENGTH'], params['Z_LENGTH']
