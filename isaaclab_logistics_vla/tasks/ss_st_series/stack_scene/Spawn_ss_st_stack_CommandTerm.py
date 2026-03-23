@@ -10,7 +10,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -19,7 +19,7 @@ from .scene_cfg import SKU_DEFINITIONS
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
-    from isaaclab_logistics_vla.tasks.OrderCommandTermCfg import OrderCommandTermCfg
+    from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
 # SKU 名称片段 → constant 参数字典的映射（新增 SKU 时在此处加一行即可）
@@ -32,24 +32,28 @@ _SKU_PARAMS_MAP = {
 }
 
 
-class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
+class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
     """
-    堆叠场景的 CommandTerm
+    堆叠场景的 CommandTerm（含冗余物品）
 
     设计要点：
     1. 箱内分为 4 个槽位（2×2 网格），每个槽位可放一摞
-    2. 随机选 n_stacks 摞（1~max_stacks），随机选 m 种 SKU
-    3. 确保目标物总数 > max_per_stack*(n_stacks-1)，保证必须用到 n_stacks 摞
-    4. 目标物按 SKU 顺序贪心填充：同种优先填满一摞，不足时下一种接续
-    5. 每摞内按底面积从小到大排列（底部面积最小，顶部面积最大）
-    6. n 个槽位放目标摞，随机分配槽位；放置时加入轻微位置抖动和旋转抖动
-    7. 本版本暂不生成干扰物（后续可简单扩展：在剩余 4-n 个空槽中随机散放即可）
+    2. 随机选 n_stacks 摞（1~max_stacks），随机选 m 种目标 SKU
+    3. 确保订单需求总数 > max_per_stack*(n_stacks-1)，保证必须用到 n_stacks 摞
+    4. 物品按 SKU 顺序贪心填充：同种优先填满一摞，不足时下一种接续
+    5. 每摞内按底面积从大到小排列（底部面积最大，顶部面积最小）
+    6. n 个槽位放摞，随机分配槽位；放置时加入轻微位置抖动和旋转抖动
+
+    冗余物品机制：
+    订单需求由 target_need_sku_num 定义。在满足需求之后，对剩余空槽位
+    逐个进行伯努利采样（概率 p ~ Uniform(0, max_redundant_ratio)），
+    独立决定是否填入冗余物品。冗余数量自然服从 Binomial(remaining, p)，
+    无固定上限，跨 episode 多样性更高。
+    订单物品 vs 冗余物品由 is_order_mask 显式标记。
 
     辅助变量 stack_layout:
         shape = [num_envs, num_sources, max_stacks, max_per_stack]
         值为 object index，-1 表示空位
-        示例：[[[0,1,2,3], [4,5,6,7], [8,9,-1,-1], [-1,-1,-1,-1]]]
-        表示 0 号环境、0 号原料箱有 3 摞，第 1 摞 4 个，第 2 摞 4 个，第 3 摞 2 个
     """
 
     SCALE = 1.0  # 默认缩放倍率；若 scene_cfg.SKU_DEFINITIONS 中为该 SKU 配置了 scale，则以配置为准
@@ -66,6 +70,11 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
         self.stack_layout = torch.full(
             (self.num_envs, self.num_sources, max_stacks, max_per_stack),
             -1, dtype=torch.long, device=self.device
+        )
+
+        # 标记哪些物品是订单物品（True）vs 冗余物品（False）
+        self.is_order_mask = torch.zeros(
+            (self.num_envs, self.num_objects), dtype=torch.bool, device=self.device
         )
 
     # ------------------------------------------------------------------ #
@@ -128,24 +137,25 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
 
     def _assign_objects_boxes(self, env_ids: Sequence[int]):
         """
-        为每个环境分配物品到原料箱，并规划堆叠布局。
+        为每个环境分配物品到原料箱，并规划堆叠布局（含冗余物品）。
 
         流程：
-        1. 随机选一个原料箱
-        2. 随机选摞数 n_stacks ∈ [1, max_stacks]
-        3. 随机选 m 种 SKU，随机决定每种激活几个实例
-           约束：总实例数 ∈ (max_per_stack*(n-1), max_per_stack*n]
-        4. 按 SKU 顺序贪心填充：同种 SKU 优先填满一摞，放不下则去下一摞
-        5. 每摞内按底面积从小到大排序
-        6. 写入 stack_layout 辅助张量
+        1. 随机选一个原料箱，随机选摞数 n_stacks
+        2. 选目标 SKU，确定每种的订单需求量 → 写入 target_need_sku_num
+        3. 激活需求物品
+        4. 从所有尚未激活的实例（任意 SKU）中随机补充冗余物品
+        5. 全部物品混合堆叠
+        6. 写入 obj_to_source_id / stack_layout / is_active_mask
         """
-        self.obj_to_target_id[env_ids] = -1
+        self.target_need_sku_num[env_ids] = -1
         self.obj_to_source_id[env_ids] = -1
+        self.is_order_mask[env_ids] = False
         self.stack_layout[env_ids] = -1
 
         max_stacks = getattr(self.cfg, 'max_stacks', 4)
         max_per_stack = getattr(self.cfg, 'max_per_stack', 4)
         max_active_skus = getattr(self.cfg, 'max_active_skus', 5)
+        max_redundant_ratio = getattr(self.cfg, 'max_redundant_ratio', 0.7)
 
         for env_id in env_ids:
             env_id_val = env_id.item() if isinstance(env_id, torch.Tensor) else int(env_id)
@@ -153,112 +163,135 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
             # --- 1. 随机选一个原料箱 ---
             selected_source_box = torch.randint(0, self.num_sources, (1,)).item()
 
-            # --- 2. 随机选摞数 n_stacks ∈ [1, max_stacks] ---
+            # --- 2. 随机选摞数 ---
             n_stacks = torch.randint(1, max_stacks + 1, (1,)).item()
 
-            # --- 3. 随机选 SKU 种类数 ---
-            # m_skus 不能超过 max_per_stack*n_stacks（否则至少1个/SKU就放不下）
-            max_skus = min(max_active_skus, self.num_skus, n_stacks * max_per_stack)
-            if max_skus < 1:
-                max_skus = 1
-            m_skus = torch.randint(1, max_skus + 1, (1,)).item()
-            selected_sku_indices = torch.randperm(self.num_skus)[:m_skus].tolist()
+            # --- 3. 选目标 SKU 种类、确定订单需求量 ---
+            max_target_skus = min(max_active_skus, self.num_skus, n_stacks * max_per_stack)
+            if max_target_skus < 1:
+                max_target_skus = 1
+            m_target_skus = torch.randint(1, max_target_skus + 1, (1,)).item()
+            target_sku_indices = torch.randperm(self.num_skus)[:m_target_skus].tolist()
 
-            # --- 4. 计算总实例数约束 ---
-            # 每种 SKU 可用实例数
-            available_per_sku = []
-            for sku_idx in selected_sku_indices:
+            available_per_target = []
+            for sku_idx in target_sku_indices:
                 sku_name = self.sku_names[sku_idx]
-                available_per_sku.append(len(self.sku_to_indices[sku_name]))
-            total_available = sum(available_per_sku)
+                available_per_target.append(len(self.sku_to_indices[sku_name]))
+            total_target_available = sum(available_per_target)
 
-            min_total = max_per_stack * (n_stacks - 1) + 1  # 保证必须用到 n_stacks 摞
-            max_total = max_per_stack * n_stacks
+            min_demand = max_per_stack * (n_stacks - 1) + 1
+            max_demand_total = max_per_stack * n_stacks
 
-            # 如果可用实例不够，降低摞数
-            while min_total > total_available and n_stacks > 1:
+            while min_demand > total_target_available and n_stacks > 1:
                 n_stacks -= 1
-                min_total = max_per_stack * (n_stacks - 1) + 1
-                max_total = max_per_stack * n_stacks
+                min_demand = max_per_stack * (n_stacks - 1) + 1
+                max_demand_total = max_per_stack * n_stacks
 
-            # 还需保证每种 SKU 至少 1 个
-            min_total = max(min_total, m_skus)
-            actual_max = min(max_total, total_available)
-            actual_min = min(min_total, actual_max)
+            total_capacity = max_per_stack * n_stacks
+            min_demand = max(min_demand, m_target_skus)
+            actual_max_demand = min(max_demand_total, total_target_available)
+            actual_min_demand = min(min_demand, actual_max_demand)
 
-            # 随机采样目标总数
-            if actual_min >= actual_max:
-                target_total = actual_max
+            if actual_min_demand >= actual_max_demand:
+                target_total_demand = actual_max_demand
             else:
-                target_total = torch.randint(actual_min, actual_max + 1, (1,)).item()
+                target_total_demand = torch.randint(actual_min_demand, actual_max_demand + 1, (1,)).item()
 
-            # --- 5. 分配每种 SKU 的实例数 ---
-            counts = [0] * m_skus
-            remaining = target_total
-
-            # 先保证每种至少 1 个
-            for i in range(m_skus):
+            demand_counts = [0] * m_target_skus
+            remaining = target_total_demand
+            for i in range(m_target_skus):
                 if remaining <= 0:
                     break
-                counts[i] = 1
+                demand_counts[i] = 1
                 remaining -= 1
-
-            # 随机补满剩余
             while remaining > 0:
-                candidates = [i for i in range(m_skus) if counts[i] < available_per_sku[i]]
+                candidates = [i for i in range(m_target_skus) if demand_counts[i] < available_per_target[i]]
                 if not candidates:
                     break
                 idx = candidates[torch.randint(0, len(candidates), (1,)).item()]
-                counts[idx] += 1
+                demand_counts[idx] += 1
                 remaining -= 1
 
-            # --- 6. 激活物品并按 SKU 分组记录 ---
-            sku_obj_groups = []  # [(sku_name, [obj_indices]), ...]
+            # --- 4. 激活订单需求物品、写 target_need_sku_num ---
+            sku_obj_groups = []
+            slots_used = 0
 
-            for i, sku_idx in enumerate(selected_sku_indices):
-                if counts[i] == 0:
+            for i, sku_idx in enumerate(target_sku_indices):
+                if demand_counts[i] == 0:
                     continue
+                self.target_need_sku_num[env_id_val, 0, sku_idx] = demand_counts[i]
+
                 sku_name = self.sku_names[sku_idx]
                 global_indices = self.sku_to_indices[sku_name]
-                k = counts[i]
-                perm = torch.randperm(len(global_indices))[:k]
+                perm = torch.randperm(len(global_indices))[:demand_counts[i]]
                 selected_objs = [global_indices[p] for p in perm.tolist()]
 
                 for obj_idx in selected_objs:
                     self.obj_to_source_id[env_id_val, obj_idx] = selected_source_box
-                    self.obj_to_target_id[env_id_val, obj_idx] = 0  # 全部为目标物
+                    self.is_order_mask[env_id_val, obj_idx] = True
 
                 sku_obj_groups.append((sku_name, selected_objs))
+                slots_used += demand_counts[i]
 
-            # --- 7. 按 SKU 顺序贪心填充到 n_stacks 摞 ---
-            # 规则：同种 SKU 优先填满当前摞；摞满则换下一摞；下一种 SKU 接续当前摞
+            # --- 5. 冗余物品：逐槽位伯努利采样，随机填充剩余空位 ---
+            remaining_slots = total_capacity - slots_used
+
+            if remaining_slots > 0:
+                redundant_prob = torch.rand(1, device=self.device).item() * max_redundant_ratio
+                n_redundant = int((torch.rand(remaining_slots, device=self.device) < redundant_prob).sum().item())
+
+                if n_redundant > 0:
+                    available_pool = [
+                        idx for idx in range(self.num_objects)
+                        if self.obj_to_source_id[env_id_val, idx].item() == -1
+                    ]
+                    n_redundant = min(n_redundant, len(available_pool))
+
+                    if n_redundant > 0:
+                        perm = torch.randperm(len(available_pool))[:n_redundant]
+                        redundant_objs = [available_pool[p] for p in perm.tolist()]
+
+                        for obj_idx in redundant_objs:
+                            self.obj_to_source_id[env_id_val, obj_idx] = selected_source_box
+
+                        redundant_by_sku: dict[str, list[int]] = {}
+                        for obj_idx in redundant_objs:
+                            obj_name = self.object_names[obj_idx]
+                            matched_sku = obj_name
+                            for sn in self.sku_names:
+                                if sn in obj_name:
+                                    matched_sku = sn
+                                    break
+                            redundant_by_sku.setdefault(matched_sku, []).append(obj_idx)
+
+                        for sku_name, objs in redundant_by_sku.items():
+                            sku_obj_groups.append((sku_name, objs))
+
+            # --- 6. 按 SKU 顺序贪心填充到 n_stacks 摞 ---
             stacks: list[list[int]] = [[] for _ in range(n_stacks)]
             current_stack = 0
 
             for _sku_name, obj_indices in sku_obj_groups:
                 for obj_idx in obj_indices:
-                    # 当前摞满了，换下一摞
                     if current_stack < n_stacks and len(stacks[current_stack]) >= max_per_stack:
                         current_stack += 1
                     if current_stack >= n_stacks:
-                        break  # 理论上不会发生（总数 <= max_per_stack * n_stacks）
+                        break
                     stacks[current_stack].append(obj_idx)
 
-            # --- 8. 每摞内按底面积从大到小排序（底部最大，顶部最小）---
+            # --- 7. 每摞内按底面积从大到小排序（底部最大，顶部最小）---
             for stack in stacks:
-                # 底层为底面积最大的物体，越往上越小
                 stack.sort(
                     key=lambda idx: self._stack_params_cache[self.object_names[idx]]['base_area'],
                     reverse=True,
                 )
 
-            # --- 9. 写入 stack_layout ---
+            # --- 8. 写入 stack_layout ---
             for stack_idx, stack in enumerate(stacks):
                 for pos, obj_idx in enumerate(stack):
                     self.stack_layout[env_id_val, selected_source_box, stack_idx, pos] = obj_idx
 
         self.is_active_mask[env_ids] = (self.obj_to_source_id[env_ids] != -1)
-        self.is_target_mask[env_ids] = (self.obj_to_target_id[env_ids] != -1)
 
     # ------------------------------------------------------------------ #
     #                       物品生成（Spawn）                               #
@@ -374,12 +407,16 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
 
     def _update_spawn_metrics(self):
         """
-        堆叠加权得分：每摞中越靠下层的目标物成功放置，分数越高。
+        堆叠加权得分：统计所有在 stack_layout 中的物品。
 
         权重 = stack_size - position（底层 = stack_size，顶层 = 1）
         stack_weighted_score = Σ(weight × success) / Σ(weight)
+
+        成功判定：object_states 落在目标箱区间 (num_sources, num_sources + num_targets]
         """
         current_states = self.object_states
+        target_state_min = self.num_sources + 1
+        target_state_max = self.num_sources + self.num_targets
 
         weighted_success = torch.zeros(self.num_envs, device=self.device)
         total_weight = torch.zeros(self.num_envs, device=self.device)
@@ -395,15 +432,74 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
                         obj_idx = layout[stack_idx, pos].item()
                         if obj_idx == -1:
                             break
-                        weight = float(stack_size - pos)  # 底层权重最高
+                        weight = float(stack_size - pos)
                         total_weight[env_id] += weight
-                        if current_states[env_id, obj_idx] == 3:  # 成功放置
+                        state_val = current_states[env_id, obj_idx].item()
+                        if target_state_min <= state_val <= target_state_max:
                             weighted_success[env_id] += weight
 
         valid = total_weight > 0
         score = torch.zeros_like(weighted_success)
         score[valid] = weighted_success[valid] / total_weight[valid]
-        self.metrics["stack_weighted_score"] = score
+        self.eval_metrics["stack_weighted_score"] = score
+
+    # ------------------------------------------------------------------ #
+    #                       总得分计算                                     #
+    # ------------------------------------------------------------------ #
+
+    def compute_total_reward(self, env_ids) -> torch.Tensor:
+        """
+        计算环境完全结束后的总得分（仅统计订单物品）。
+
+        堆叠场景中越底层的物品权重越高：
+            权重 = stack_size - position（底层 = stack_size，顶层 = 1）
+
+        仅当订单物品的 object_states 落在目标箱区间时记为成功得分。
+        冗余物品不参与得分计算。
+
+        Returns:
+            (len(env_ids),) 每个环境的总得分，值域 [0, 1]
+        """
+        if not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.tensor(env_ids, device=self.device)
+
+        current_states = self.object_states
+        target_state_min = self.num_sources + 1
+        target_state_max = self.num_sources + self.num_targets
+
+        scores = torch.zeros(len(env_ids), device=self.device)
+
+        for i, env_id in enumerate(env_ids):
+            eid = env_id.item() if isinstance(env_id, torch.Tensor) else int(env_id)
+
+            weighted_success = 0.0
+            total_weight = 0.0
+
+            for src_idx in range(self.num_sources):
+                layout = self.stack_layout[eid, src_idx]
+                for stack_idx in range(layout.shape[0]):
+                    stack_size = (layout[stack_idx] != -1).sum().item()
+                    if stack_size == 0:
+                        continue
+                    for pos in range(stack_size):
+                        obj_idx = layout[stack_idx, pos].item()
+                        if obj_idx == -1:
+                            break
+
+                        if not self.is_order_mask[eid, obj_idx]:
+                            continue
+
+                        weight = float(stack_size - pos)
+                        total_weight += weight
+
+                        state_val = current_states[eid, obj_idx].item()
+                        if target_state_min <= state_val <= target_state_max:
+                            weighted_success += weight
+
+            if total_weight > 0:
+                scores[i] = weighted_success / total_weight
+
+        return scores
 
     # ------------------------------------------------------------------ #
     #                       接口方法                                       #
@@ -414,3 +510,6 @@ class Spawn_ss_st_stack_CommandTerm(AssignSSSTCommandTerm):
 
     def command(self):
         pass
+
+    def __str__(self) -> str:
+        return "ss_st_stack"

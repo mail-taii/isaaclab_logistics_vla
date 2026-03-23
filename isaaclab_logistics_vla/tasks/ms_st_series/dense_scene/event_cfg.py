@@ -1,3 +1,4 @@
+
 from isaaclab.managers import EventTermCfg
 from isaaclab.managers import SceneEntityCfg
 
@@ -15,7 +16,7 @@ import torch
 
 
 @configclass
-class Spawn_ss_st_dense_EventCfg:
+class Spawn_ms_st_dense_EventCfg:
     """Configuration for events."""
 
     reset_all = EventTermCfg(func=mdp.reset_scene_to_default, mode="reset")
@@ -66,4 +67,3 @@ class Spawn_ss_st_dense_EventCfg:
             #"words": "订单号 123456\n发往 2号订单箱子"
         },
     )
-
