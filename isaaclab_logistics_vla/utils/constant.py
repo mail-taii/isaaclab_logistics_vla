@@ -2032,7 +2032,7 @@ TEABOX_BASE4 = {
     'SPARSE_ORIENT': (0, 0, 0),
     'STACK_ORIENT': (0, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
-    'STACK_SCALE': 1,
+    'STACK_SCALE': 0.6,
     'SPARSE_SCALE': 1,
     'DENSE_SCALE': 1
 }
@@ -2436,7 +2436,7 @@ WOODENBLOCK_BASE3 = {
     'Y_LENGTH': 0.037,
     'Z_LENGTH': 0.052,
     'SPARSE_ORIENT': (0, 0, 0),
-    'STACK_ORIENT': (90, 0, 90),
+    'STACK_ORIENT': (90, 0, 0),
     'DENSE_ORIENT': (0, 0, 0),
     'STACK_SCALE': 0.8,
     'SPARSE_SCALE': 1,
