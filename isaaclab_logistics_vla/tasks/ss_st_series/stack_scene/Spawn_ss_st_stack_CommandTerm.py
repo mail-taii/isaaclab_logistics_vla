@@ -22,16 +22,6 @@ if TYPE_CHECKING:
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
-# SKU 名称片段 → constant 参数字典的映射（新增 SKU 时在此处加一行即可）
-_SKU_PARAMS_MAP = {
-    "cracker": CRACKER_BOX_PARAMS,
-    "sugar": SUGER_BOX_PARAMS,
-    "plastic_package": PLASTIC_PACKAGE_PARAMS,
-    "sf_big": SF_BIG_PARAMS,
-    "sf_small": SF_SMALL_PARAMS,
-}
-
-
 class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
     """
     堆叠场景的 CommandTerm（含冗余物品）
@@ -92,34 +82,29 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
     def _get_raw_params(self, obj_name: str) -> dict:
         """
         获取缩放后的 SKU 物理参数（尺寸 + STACK_ORIENT）。
-        新增 SKU 时：在 constant.py 加参数字典，在 _SKU_PARAMS_MAP 加映射。
+        方案 B：在 constant.py 中为每个 SKU 定义独立的参数字典，并统一挂在 SKU_CONFIG 中。
+        这里根据 object_name 中包含的规范化 sku 名（如 "cracker_box"）在 SKU_CONFIG 中查找。
         """
-        # 优先从 scene_cfg.SKU_DEFINITIONS 里读取每个 SKU 独立配置的 scale，
-        # 若未配置则回退到类属性 SCALE。
-        scale = self._get_scale_for_obj(obj_name)
-        for key, params in _SKU_PARAMS_MAP.items():
-            if key in obj_name:
-                return {
-                    'X_LENGTH': params['X_LENGTH'] * scale,
-                    'Y_LENGTH': params['Y_LENGTH'] * scale,
-                    'Z_LENGTH': params['Z_LENGTH'] * scale,
-                    'STACK_ORIENT': params['STACK_ORIENT'],
-                }
-        # 默认回退
-        p = CRACKER_BOX_PARAMS
-        return {
-            'X_LENGTH': p['X_LENGTH'] * scale,
-            'Y_LENGTH': p['Y_LENGTH'] * scale,
-            'Z_LENGTH': p['Z_LENGTH'] * scale,
-            'STACK_ORIENT': p['STACK_ORIENT'],
-        }
-
-    def _get_scale_for_obj(self, obj_name: str) -> float:
-        """根据物体名称从 scene_cfg.SKU_DEFINITIONS 中获取对应的缩放倍率。"""
-        for sku_name, (_usd_path, _count, scale) in SKU_DEFINITIONS.items():
+        # 优先：根据 SKU_CONFIG 里的规范名匹配
+        params = None
+        for sku_name, p in SKU_CONFIG.items():
             if sku_name in obj_name:
-                return float(scale)
-        return float(self.SCALE)
+                params = p
+                break
+
+        # 若未匹配到，则回退到默认 CRACKER_BOX_PARAMS，以保持行为稳定
+        if params is None:
+            params = CRACKER_BOX_PARAMS
+
+        # 缩放倍率优先使用参数里的 STACK_SCALE，否则退回类属性 SCALE
+        scale = float(params.get('STACK_SCALE', self.SCALE))
+
+        return {
+            'X_LENGTH': params['X_LENGTH'] * scale,
+            'Y_LENGTH': params['Y_LENGTH'] * scale,
+            'Z_LENGTH': params['Z_LENGTH'] * scale,
+            'STACK_ORIENT': params['STACK_ORIENT'],
+        }
 
     def _compute_stack_params(self, params: dict) -> dict:
         """根据缩放后尺寸计算 base_area / stack_height / stack_orient"""
@@ -213,6 +198,10 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                 remaining -= 1
 
             # --- 4. 激活订单需求物品、写 target_need_sku_num ---
+            # 先将 order_0 整行置 0（标记"此订单存在，各 SKU 默认需求为 0"），
+            # 其余 order 保持 -1（"订单不存在"）。随后逐 SKU 覆盖具体需求量。
+            self.target_need_sku_num[env_id_val, 0, :] = 0
+
             sku_obj_groups = []
             slots_used = 0
 
@@ -336,7 +325,7 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
             for stack_idx in range(max_stacks):
                 slot_idx = slot_perm[stack_idx % 4].item()
                 anchor = anchors[slot_idx]
-                z_offset = 0.015  # 箱底厚度
+                z_offset = 0.025  # 箱底厚度
 
                 for pos in range(max_per_stack):
                     obj_idx = layout[stack_idx, pos].item()
@@ -347,7 +336,7 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                     stack_height = params['stack_height']
 
                     # 位置：锚点 + 轻微 XY 抖动
-                    jitter_xy = 0.005
+                    jitter_xy = 0.00
                     rand_x = (torch.rand(1, device=self.device).item() * 2 - 1) * jitter_xy
                     rand_y = (torch.rand(1, device=self.device).item() * 2 - 1) * jitter_xy
 
@@ -359,7 +348,7 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
 
                     # 朝向：STACK_ORIENT + 轻微 Z 轴旋转抖动（±5°）
                     orient = params['stack_orient']
-                    jitter_yaw = (torch.rand(1, device=self.device).item() * 2 - 1) * 5
+                    jitter_yaw = (torch.rand(1, device=self.device).item() * 2 - 1) * 0
                     relative_quat = euler_to_quat_isaac(
                         orient[0], orient[1], orient[2] + jitter_yaw
                     )
@@ -372,8 +361,8 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                         relative_pos=relative_pos,
                         relative_quat=relative_quat,
                     )
-
-                    z_offset += stack_height
+                    
+                    z_offset += stack_height+0.02
 
     # ------------------------------------------------------------------ #
     #                       辅助方法                                       #
@@ -407,13 +396,33 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
 
     def _update_spawn_metrics(self):
         """
-        堆叠加权得分：统计所有在 stack_layout 中的物品。
-
-        权重 = stack_size - position（底层 = stack_size，顶层 = 1）
-        stack_weighted_score = Σ(weight × success) / Σ(weight)
-
-        成功判定：object_states 落在目标箱区间 (num_sources, num_sources + num_targets]
+        利用 target_need_sku_num / target_contain_sku_num 计算与基类一致的 Metrics，
+        并在此基础上增加堆叠加权得分（仅统计订单物品，底层权重大于顶层）。
         """
+        target_idx = 0
+
+        # -----------------------------------------------------------------
+        # 1. 需求矩阵与实际包含矩阵
+        # -----------------------------------------------------------------
+        target_needs = self.target_need_sku_num[:, target_idx, :]
+        actual_in_target = self.target_contain_sku_num[:, target_idx, :]
+
+        correct_picks = torch.minimum(actual_in_target, target_needs).sum(dim=1)
+        wrong_picks = torch.clamp(actual_in_target - target_needs, min=0).sum(dim=1)
+        dropped_count = (self.object_states == 10).sum(dim=1)
+        total_needed = target_needs.sum(dim=1)
+
+        completion_rate = torch.where(
+            total_needed > 0,
+            correct_picks.float() / total_needed.float(),
+            torch.tensor(1.0, device=self.device),
+        )
+        is_success = (correct_picks == total_needed) & (wrong_picks == 0)
+
+        # -----------------------------------------------------------------
+        # 2. 堆叠加权得分：仅统计订单物品，权重 = stack_size - position
+        #    成功判定：object_states 落在目标箱区间 (num_sources, num_sources + num_targets]
+        # -----------------------------------------------------------------
         current_states = self.object_states
         target_state_min = self.num_sources + 1
         target_state_max = self.num_sources + self.num_targets
@@ -432,6 +441,8 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                         obj_idx = layout[stack_idx, pos].item()
                         if obj_idx == -1:
                             break
+                        if not self.is_order_mask[env_id, obj_idx]:
+                            continue
                         weight = float(stack_size - pos)
                         total_weight[env_id] += weight
                         state_val = current_states[env_id, obj_idx].item()
@@ -439,67 +450,19 @@ class Spawn_ss_st_stack_CommandTerm(BaseOrderCommandTerm):
                             weighted_success[env_id] += weight
 
         valid = total_weight > 0
-        score = torch.zeros_like(weighted_success)
-        score[valid] = weighted_success[valid] / total_weight[valid]
-        self.eval_metrics["stack_weighted_score"] = score
+        stack_weighted_score = torch.zeros(self.num_envs, device=self.device)
+        stack_weighted_score[valid] = weighted_success[valid] / total_weight[valid]
 
-    # ------------------------------------------------------------------ #
-    #                       总得分计算                                     #
-    # ------------------------------------------------------------------ #
-
-    def compute_total_reward(self, env_ids) -> torch.Tensor:
-        """
-        计算环境完全结束后的总得分（仅统计订单物品）。
-
-        堆叠场景中越底层的物品权重越高：
-            权重 = stack_size - position（底层 = stack_size，顶层 = 1）
-
-        仅当订单物品的 object_states 落在目标箱区间时记为成功得分。
-        冗余物品不参与得分计算。
-
-        Returns:
-            (len(env_ids),) 每个环境的总得分，值域 [0, 1]
-        """
-        if not isinstance(env_ids, torch.Tensor):
-            env_ids = torch.tensor(env_ids, device=self.device)
-
-        current_states = self.object_states
-        target_state_min = self.num_sources + 1
-        target_state_max = self.num_sources + self.num_targets
-
-        scores = torch.zeros(len(env_ids), device=self.device)
-
-        for i, env_id in enumerate(env_ids):
-            eid = env_id.item() if isinstance(env_id, torch.Tensor) else int(env_id)
-
-            weighted_success = 0.0
-            total_weight = 0.0
-
-            for src_idx in range(self.num_sources):
-                layout = self.stack_layout[eid, src_idx]
-                for stack_idx in range(layout.shape[0]):
-                    stack_size = (layout[stack_idx] != -1).sum().item()
-                    if stack_size == 0:
-                        continue
-                    for pos in range(stack_size):
-                        obj_idx = layout[stack_idx, pos].item()
-                        if obj_idx == -1:
-                            break
-
-                        if not self.is_order_mask[eid, obj_idx]:
-                            continue
-
-                        weight = float(stack_size - pos)
-                        total_weight += weight
-
-                        state_val = current_states[eid, obj_idx].item()
-                        if target_state_min <= state_val <= target_state_max:
-                            weighted_success += weight
-
-            if total_weight > 0:
-                scores[i] = weighted_success / total_weight
-
-        return scores
+        self.metrics = {
+            "completion_rate": completion_rate,
+            "wrong_pick_count": wrong_picks,
+            "dropped_count": dropped_count,
+            "is_success": is_success.float(),
+            "correct_picks": correct_picks,
+            "total_needed": total_needed,
+            "stack_weighted_score": stack_weighted_score,
+        }
+        return self.metrics
 
     # ------------------------------------------------------------------ #
     #                       接口方法                                       #

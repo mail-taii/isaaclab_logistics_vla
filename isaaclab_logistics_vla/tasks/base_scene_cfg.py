@@ -97,7 +97,7 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
             ),
         ),
         
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.57989, 1.33474, 0.750),rot=(1, 0, 0, 0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.57989, 3.4429, 0.82),rot=(1, 0, 0, 0)),
     )
 
     s_box_2 = RigidObjectCfg(
@@ -111,7 +111,7 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
             ),
         ),
         
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.025, 1.33614, 0.725),rot=(1, 0, 0, 0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.025, 3.4429, 0.82),rot=(1, 0, 0, 0)),
     )
 
     s_box_3 = RigidObjectCfg(
@@ -125,7 +125,7 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
             ),
         ),
         
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.51025, 1.33614, 0.750),rot=(1, 0, 0, 0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.510, 3.4429, 0.82),rot=(1, 0, 0, 0)),
     )
 
     t_box_1 = RigidObjectCfg(
@@ -139,7 +139,7 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
             ),
         ),
         
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.57989, 3.4429, 0.82),rot=(1, 0, 0, 0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.57989, 1.33474, 0.750),rot=(1, 0, 0, 0)),
     )
 
     t_box_2 = RigidObjectCfg(
@@ -153,7 +153,7 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
             ),
         ),
         
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.025, 3.4429, 0.82),rot=(1, 0, 0, 0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.025, 1.33614, 0.725),rot=(1, 0, 0, 0)),
     )
 
     t_box_3 = RigidObjectCfg(
@@ -167,5 +167,5 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
             ),
         ),
         
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.510, 3.4429, 0.82),rot=(1, 0, 0, 0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.51025, 1.33614, 0.750),rot=(1, 0, 0, 0)),
     )

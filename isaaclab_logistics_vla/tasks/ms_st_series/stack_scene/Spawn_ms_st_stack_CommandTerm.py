@@ -22,25 +22,20 @@ if TYPE_CHECKING:
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 
-# SKU 名称片段 → constant 参数字典的映射
-_SKU_PARAMS_MAP = {
-    "cracker": CRACKER_BOX_PARAMS,
-    "sugar": SUGER_BOX_PARAMS,
-    "plastic_package": PLASTIC_PACKAGE_PARAMS,
-    "sf_big": SF_BIG_PARAMS,
-    "sf_small": SF_SMALL_PARAMS,
-}
-
-
 class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
     """
-    多源-单目标 堆叠场景的 CommandTerm
+    多源-单目标 堆叠场景的 CommandTerm（含冗余物品）
 
     与 ss_st stack_scene 的主要差异：
     1. 使用多个原料箱（随机 2~3 个），而非只用 1 个
-    2. 所有激活物品均为目标物（暂不生成干扰物）
-    3. 目标物在箱子间尽量均匀分配（round-robin）
-    4. 继承 AssignMSSTCommandTerm（含源箱清理率、均衡度等指标）
+    2. 目标物在箱子间尽量均匀分配（round-robin）
+    3. 每个箱子独立进行伯努利采样，为剩余空位填充冗余物品
+
+    冗余物品机制：
+    订单需求由 target_need_sku_num 定义。目标物 round-robin 分配到各箱后，
+    对每个箱子的剩余空槽位逐个进行伯努利采样（概率 p ~ Uniform(0, max_redundant_ratio)），
+    独立决定是否填入冗余物品。冗余物品从全局未分配实例池中随机选取。
+    订单物品 vs 冗余物品由 is_order_mask 显式标记。
 
     辅助变量 stack_layout:
         shape = [num_envs, num_sources, max_stacks, max_per_stack]
@@ -61,6 +56,11 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
             -1, dtype=torch.long, device=self.device
         )
 
+        # 标记哪些物品是订单物品（True）vs 冗余物品（False）
+        self.is_order_mask = torch.zeros(
+            (self.num_envs, self.num_objects), dtype=torch.bool, device=self.device
+        )
+
     # ------------------------------------------------------------------ #
     #                       堆叠参数缓存                                   #
     # ------------------------------------------------------------------ #
@@ -73,28 +73,27 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
         return cache
 
     def _get_raw_params(self, obj_name: str) -> dict:
-        scale = self._get_scale_for_obj(obj_name)
-        for key, params in _SKU_PARAMS_MAP.items():
-            if key in obj_name:
-                return {
-                    'X_LENGTH': params['X_LENGTH'] * scale,
-                    'Y_LENGTH': params['Y_LENGTH'] * scale,
-                    'Z_LENGTH': params['Z_LENGTH'] * scale,
-                    'STACK_ORIENT': params['STACK_ORIENT'],
-                }
-        p = CRACKER_BOX_PARAMS
-        return {
-            'X_LENGTH': p['X_LENGTH'] * scale,
-            'Y_LENGTH': p['Y_LENGTH'] * scale,
-            'Z_LENGTH': p['Z_LENGTH'] * scale,
-            'STACK_ORIENT': p['STACK_ORIENT'],
-        }
-
-    def _get_scale_for_obj(self, obj_name: str) -> float:
-        for sku_name, (_usd_path, _count, scale) in SKU_DEFINITIONS.items():
+        """
+        获取缩放后的 SKU 物理参数（尺寸 + STACK_ORIENT）。
+        根据 object_name 中包含的规范化 sku 名在 SKU_CONFIG 中查找。
+        """
+        params = None
+        for sku_name, p in SKU_CONFIG.items():
             if sku_name in obj_name:
-                return float(scale)
-        return float(self.SCALE)
+                params = p
+                break
+
+        if params is None:
+            params = CRACKER_BOX_PARAMS
+
+        scale = float(params.get('STACK_SCALE', self.SCALE))
+
+        return {
+            'X_LENGTH': params['X_LENGTH'] * scale,
+            'Y_LENGTH': params['Y_LENGTH'] * scale,
+            'Z_LENGTH': params['Z_LENGTH'] * scale,
+            'STACK_ORIENT': params['STACK_ORIENT'],
+        }
 
     def _compute_stack_params(self, params: dict) -> dict:
         x, y, z = params['X_LENGTH'], params['Y_LENGTH'], params['Z_LENGTH']
@@ -111,17 +110,18 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
 
     def _assign_objects_boxes(self, env_ids: Sequence[int]):
         """
-        多源堆叠分配逻辑（全目标，无干扰物）：
+        多源堆叠分配逻辑（含冗余物品）：
 
         1. 随机决定使用 2~3 个原料箱
         2. 随机选 n_active_skus 种 SKU，全部作为目标物
         3. 采样各 SKU 实例
-        4. 目标物 round-robin 均匀分配到各箱
-        5. 每个箱子内部按 SKU 贪心填充到多摞，每摞按 base_area 从大到小排序
+        4. 目标物 round-robin 均匀分配到各箱，写入映射
+        5. 逐箱伯努利采样，为剩余空位填充冗余物品
+        6. 逐箱按 SKU 贪心填充到多摞，每摞按 base_area 从大到小排序
         """
-        self.obj_can_to_targets_ids[env_ids] = -1
-        self.target_need_sku_num[env_ids] = 0
+        self.target_need_sku_num[env_ids] = -1
         self.obj_to_source_id[env_ids] = -1
+        self.is_order_mask[env_ids] = False
         self.stack_layout[env_ids] = -1
 
         max_stacks = getattr(self.cfg, 'max_stacks', 4)
@@ -130,6 +130,7 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
         max_instances_per_sku = getattr(self.cfg, 'max_instances_per_sku', 3)
         min_source_box = getattr(self.cfg, 'min_source_box', 2)
         max_source_box = getattr(self.cfg, 'max_source_box', 3)
+        max_redundant_ratio = getattr(self.cfg, 'max_redundant_ratio', 0.7)
 
         for env_id in env_ids:
             env_id_val = env_id.item() if isinstance(env_id, torch.Tensor) else int(env_id)
@@ -142,6 +143,10 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
             selected_sku_indices = torch.randperm(self.num_skus)[:num_to_sample].tolist()
 
             # --- 3. 采样所有目标物实例 ---
+            # 先将 order_0 整行置 0（标记"此订单存在，各 SKU 默认需求为 0"），
+            # 其余 order 保持 -1（"订单不存在"）。随后逐 SKU 覆盖具体需求量。
+            self.target_need_sku_num[env_id_val, 0, :] = 0
+
             target_objs = []
             for sku_idx in selected_sku_indices:
                 sku_name = self.sku_names[sku_idx]
@@ -151,23 +156,50 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
                 target_objs.extend(selected.tolist())
                 self.target_need_sku_num[env_id_val, 0, sku_idx] = k
 
-            # --- 4. 目标物尽量均匀分配到各箱 (round-robin) ---
+            # --- 4. 目标物尽量均匀分配到各箱 (round-robin)，写入映射 ---
             shuffled_targets = [target_objs[i] for i in torch.randperm(len(target_objs)).tolist()]
             box_contents: list[list[int]] = [[] for _ in range(num_boxes)]
             for i, obj_idx in enumerate(shuffled_targets):
                 box_contents[i % num_boxes].append(obj_idx)
 
-            # --- 5. 写入映射并构建堆叠布局 ---
             for box_idx in range(num_boxes):
                 for obj_idx in box_contents[box_idx]:
                     self.obj_to_source_id[env_id_val, obj_idx] = box_idx
-                    self.obj_can_to_targets_ids[env_id_val, obj_idx, :] = 0
-                    self.obj_can_to_targets_ids[env_id_val, obj_idx, 0] = 1
+                    self.is_order_mask[env_id_val, obj_idx] = True
 
+            # --- 5. 逐箱伯努利采样，为剩余空位填充冗余物品 ---
+            box_capacity = max_stacks * max_per_stack
+            for box_idx in range(num_boxes):
+                remaining_slots = box_capacity - len(box_contents[box_idx])
+                if remaining_slots <= 0:
+                    continue
+
+                redundant_prob = torch.rand(1, device=self.device).item() * max_redundant_ratio
+                n_redundant = int((torch.rand(remaining_slots, device=self.device) < redundant_prob).sum().item())
+                if n_redundant <= 0:
+                    continue
+
+                available_pool = [
+                    idx for idx in range(self.num_objects)
+                    if self.obj_to_source_id[env_id_val, idx].item() == -1
+                ]
+                n_redundant = min(n_redundant, len(available_pool))
+                if n_redundant <= 0:
+                    continue
+
+                perm = torch.randperm(len(available_pool))[:n_redundant]
+                redundant_objs = [available_pool[p] for p in perm.tolist()]
+
+                for obj_idx in redundant_objs:
+                    self.obj_to_source_id[env_id_val, obj_idx] = box_idx
+
+                box_contents[box_idx].extend(redundant_objs)
+
+            # --- 6. 逐箱构建堆叠布局 ---
+            for box_idx in range(num_boxes):
                 if not box_contents[box_idx]:
                     continue
 
-                # 确定该箱摞数
                 total_in_box = len(box_contents[box_idx])
                 n_stacks = min(max_stacks, math.ceil(total_in_box / max_per_stack))
                 n_stacks = max(1, n_stacks)
@@ -207,7 +239,6 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
                         self.stack_layout[env_id_val, box_idx, stack_idx, pos] = obj_idx
 
         self.is_active_mask[env_ids] = (self.obj_to_source_id[env_ids] != -1)
-        self.is_target_mask[env_ids] = (self.obj_can_to_targets_ids[env_ids] == 1).any(dim=-1)
 
     # ------------------------------------------------------------------ #
     #                       物品生成（Spawn）                               #
@@ -309,10 +340,36 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
 
     def _update_spawn_metrics(self):
         """
-        堆叠加权得分：每摞中越靠下层的物体成功放置，分数越高。
-        权重 = stack_size - position（底层 = stack_size，顶层 = 1）
+        利用 target_need_sku_num / target_contain_sku_num 计算与基类一致的 Metrics，
+        并在此基础上增加堆叠加权得分（仅统计订单物品，底层权重大于顶层）。
         """
+        target_idx = 0
+
+        # -----------------------------------------------------------------
+        # 1. 需求矩阵与实际包含矩阵
+        # -----------------------------------------------------------------
+        target_needs = self.target_need_sku_num[:, target_idx, :]
+        actual_in_target = self.target_contain_sku_num[:, target_idx, :]
+
+        correct_picks = torch.minimum(actual_in_target, target_needs).sum(dim=1)
+        wrong_picks = torch.clamp(actual_in_target - target_needs, min=0).sum(dim=1)
+        dropped_count = (self.object_states == 10).sum(dim=1)
+        total_needed = target_needs.sum(dim=1)
+
+        completion_rate = torch.where(
+            total_needed > 0,
+            correct_picks.float() / total_needed.float(),
+            torch.tensor(1.0, device=self.device),
+        )
+        is_success = (correct_picks == total_needed) & (wrong_picks == 0)
+
+        # -----------------------------------------------------------------
+        # 2. 堆叠加权得分：仅统计订单物品，权重 = stack_size - position
+        #    成功判定：object_states 落在目标箱区间 (num_sources, num_sources + num_targets]
+        # -----------------------------------------------------------------
         current_states = self.object_states
+        target_state_min = self.num_sources + 1
+        target_state_max = self.num_sources + self.num_targets
 
         weighted_success = torch.zeros(self.num_envs, device=self.device)
         total_weight = torch.zeros(self.num_envs, device=self.device)
@@ -328,15 +385,28 @@ class Spawn_ms_st_stack_CommandTerm(BaseOrderCommandTerm):
                         obj_idx = layout[stack_idx, pos].item()
                         if obj_idx == -1:
                             break
+                        if not self.is_order_mask[env_id, obj_idx]:
+                            continue
                         weight = float(stack_size - pos)
                         total_weight[env_id] += weight
-                        if current_states[env_id, obj_idx] == 3:
+                        state_val = current_states[env_id, obj_idx].item()
+                        if target_state_min <= state_val <= target_state_max:
                             weighted_success[env_id] += weight
 
         valid = total_weight > 0
-        score = torch.zeros_like(weighted_success)
-        score[valid] = weighted_success[valid] / total_weight[valid]
-        self.eval_metrics["stack_weighted_score"] = score
+        stack_weighted_score = torch.zeros(self.num_envs, device=self.device)
+        stack_weighted_score[valid] = weighted_success[valid] / total_weight[valid]
+
+        self.metrics = {
+            "completion_rate": completion_rate,
+            "wrong_pick_count": wrong_picks,
+            "dropped_count": dropped_count,
+            "is_success": is_success.float(),
+            "correct_picks": correct_picks,
+            "total_needed": total_needed,
+            "stack_weighted_score": stack_weighted_score,
+        }
+        return self.metrics
 
     # ------------------------------------------------------------------ #
     #                       接口方法                                       #
