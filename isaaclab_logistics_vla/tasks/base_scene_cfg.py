@@ -11,6 +11,9 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.utils.constant import *
+from isaaclab.sensors.camera import CameraCfg
+from isaaclab_logistics_vla.utils.util import *
+
 
 @configclass
 class BaseOrderSceneCfg(InteractiveSceneCfg):
@@ -85,6 +88,66 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
     #     ),
     #     init_state=RigidObjectCfg.InitialStateCfg(pos=(0.35625, 3.55143, -0.12113),rot=(0.5,0.5,-0.5,-0.5)),
     # )
+
+    # --- 机器人与参考系 ---
+    robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot.init_state.pos  = (0.96781, 2.28535, 0.216)
+    robot.init_state.rot = (1, 0, 0, 0)
+
+    replicate_physics = False
+
+    ee_frame: FrameTransformerCfg = register.load_eeframe_configs('realman_franka_ee_eeframe')()
+
+    # 1.头部摄像头
+    head_camera: CameraCfg = CameraCfg(
+        # 挂载在头部最高的连杆上
+        prim_path="{ENV_REGEX_NS}/Robot/head_link2/head_camera", 
+        update_period=0.0,
+        height=480, width=640,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.01, 1.0e5)
+        ),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0, 0, 1.7), 
+            rot=(-0.00378, -0.01704, 0.21641, 0.97615),
+            convention="opengl"
+        ),
+    )
+
+    # 2.左手腕摄像头
+    left_wrist_camera: CameraCfg = CameraCfg(
+        # 挂载在左手夹爪基座上
+        prim_path="{ENV_REGEX_NS}/Robot/panda_left_hand/left_camera", 
+        update_period=0.0,
+        height=480, width=640,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.01, 1.0e5)
+        ),
+        offset=CameraCfg.OffsetCfg(
+            pos=(-0.36109, 0.31991, 0.7884), 
+            rot=(0.31974, -0.21564, 0.25905, 0.88553),
+            convention="opengl"
+        ),
+    )
+
+    # 3.右手腕摄像头
+    right_wrist_camera: CameraCfg = CameraCfg(
+        # 挂载在右手夹爪基座上
+        prim_path="{ENV_REGEX_NS}/Robot/panda_right_hand/right_camera", 
+        update_period=0.0,
+        height=480, width=640,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.01, 1.0e5)
+        ),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.60966, 0.19795, 0.74869), 
+            rot=(0.27194, -0.16637, -0.22036, -0.92185),
+            convention="opengl"
+        ),
+    )
 
     s_box_1 = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/s_box_1",                                                                                                            

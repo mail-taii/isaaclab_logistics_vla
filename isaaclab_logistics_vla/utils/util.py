@@ -1,7 +1,30 @@
-import numpy as np
+from typing import TYPE_CHECKING
+import torch
+from abc import abstractmethod
+from typing import TYPE_CHECKING
+
+from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
+
+if TYPE_CHECKING:
+    from isaaclab.envs import ManagerBasedRLEnv
+
+from isaaclab_logistics_vla.utils.object_position import *
+from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.util import *
+from isaaclab_logistics_vla.utils.path_utils import *
+
 from scipy.spatial.transform import Rotation as R
 import torch
 from isaaclab.utils import math as math_utils
+
+if TYPE_CHECKING:
+    from isaaclab.envs import ManagerBasedRLEnv
+
+def get_image_from_sensor(env: "ManagerBasedRLEnv", sensor_cfg: SceneEntityCfg, data_type: str):
+    """
+    从指定的相机传感器获取图像张量，返回的Tensor形状为(num_envs, H, W, C)
+    """
+    return env.scene.sensors[sensor_cfg.name].data.output[data_type]
 
 def euler2quat(axis = 'z',degree = 0):
     '''
