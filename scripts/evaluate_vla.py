@@ -17,7 +17,7 @@ parser.add_argument("--enable_cameras", action="store_true", default=False, help
 parser.add_argument("--from_json", type=int, default=2, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
 parser.add_argument("--asset_root_path",type=str,default="/home/mail-robo/Benchmark")
-parser.add_argument("--task_scene_name",type=str,default="Spawn_ms_mt_sparse_EnvCfg")
+parser.add_argument("--task_scene_name",type=str,default="Spawn_ss_mt_sparse_EnvCfg")
 
 args_cli, _ = parser.parse_known_args()
 
