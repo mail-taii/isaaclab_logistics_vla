@@ -25,6 +25,12 @@ from isaaclab_logistics_vla.utils.constant import *
 from isaaclab_logistics_vla.utils.util import *
 from isaaclab_logistics_vla.utils.path_utils import *
 
+def get_image_from_sensor(env: "ManagerBasedRLEnv", sensor_cfg: SceneEntityCfg, data_type: str):
+    """
+    从指定的相机传感器获取图像张量，返回的Tensor形状为(num_envs, H, W, C)
+    """
+    return env.scene.sensors[sensor_cfg.name].data.output[data_type]
+
 class BaseOrderCommandTerm(CommandTerm):
     cfg: OrderCommandTermCfg
 
@@ -492,7 +498,6 @@ class BaseOrderCommandTerm(CommandTerm):
 
         self._update_object_states()
         self._update_target_states()
-        
 
     def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, float]:
         if env_ids is None:

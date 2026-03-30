@@ -10,11 +10,14 @@ parser.add_argument("--num_envs", type=int, default=None, help="Number of enviro
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--policy", type=str, default='random', help="Name of the policy.")
 parser.add_argument("--device", type=str, default='cuda:0')
+
+parser.add_argument("--enable_cameras", action="store_true", default=False, help="Enable camera rendering")
+
 # 新增：FROM_JSON 参数，0: 生成JSON, 1: 消费JSON, 2: 独立随机(默认)
 parser.add_argument("--from_json", type=int, default=2, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
 parser.add_argument("--asset_root_path",type=str,default="/home/mail-robo/Benchmark")
-parser.add_argument("--task_scene_name",type=str,default="Spawn_ss_st_sparse_EnvCfg")
+parser.add_argument("--task_scene_name",type=str,default="Spawn_ms_mt_sparse_EnvCfg")
 
 args_cli, _ = parser.parse_known_args()
 
@@ -53,6 +56,9 @@ def main():
         env_cfg.scene.num_envs = args_cli.num_envs
         
     env_cfg.sim.device = args_cli.device if args_cli.device else "cuda:0"
+
+    if args_cli.enable_cameras:
+            env_cfg.sim.render_interval = 1
 
     # 初始化评估器并运行
     evaluator = VLA_Evaluator(

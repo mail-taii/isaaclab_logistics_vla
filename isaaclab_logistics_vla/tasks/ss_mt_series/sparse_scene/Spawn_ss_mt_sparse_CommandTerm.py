@@ -11,99 +11,97 @@ from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, qu
 
 from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
-from isaaclab_logistics_vla.utils.object_position import *
-from isaaclab_logistics_vla.utils.constant import *
-from isaaclab_logistics_vla.utils.util import *
-
-from isaaclab_logistics_vla.utils.constant import SKU_CONFIG
-
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
-class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
+from isaaclab_logistics_vla.utils.object_position import *
+from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.util import *
 
+
+class Spawn_ss_mt_sparse_CommandTerm(BaseOrderCommandTerm):
+    """
+        采用最新的target_need_sku_num数量级跟踪逻辑。
+        随机将SKU需求量打散分配给多个订单箱。
+    """
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        #---障碍物兼容初始化---
+        
+        # --- 障碍物兼容初始化 ---
         self.obstacle_names = getattr(cfg, "obstacles", []) or []
         if self.obstacle_names:
             self.obstacle_assets = [env.scene[name] for name in self.obstacle_names if name in env.scene.keys()]
             self.has_obstacles = True
-            #有障碍物时：左边列[0,1,2]给物品，障碍物放在右边列中心[4]
+            # 有障碍物时：左边列 [0,1,2] 给物品，障碍物放在右边列中心 [4]
             self.ITEM_COL_INDICES = [0, 1, 2]
             self.OBSTACLE_CENTER_INDEX = 4
         else:
             self.obstacle_assets = []
             self.has_obstacles = False
-            #无障碍物时：全箱6个槽位都给物品
+            # 无障碍物时：全箱 6 个槽位都给物品
             self.ITEM_COL_INDICES = [0, 1, 2, 3, 4, 5]
 
-    def _assign_objects_boxes(self, env_ids: Sequence[int]):
-        #---初始化清理：抹除上一局的记忆---
-        #-1代表该物品不属于任何订单(Target)或不出现在任何原料箱(Source)
-        self.obj_to_source_id[env_ids] = -1
+    def __str__(self) -> str:
+        has_obs = getattr(self, "has_obstacles", False)
+        return "ss_mt_sparse_with_obstacles" if has_obs else "ss_mt_sparse"
 
-        #清空当前批次环境的订单需求记录，防止上一局的残余数据干扰本局计算
+    def _assign_objects_boxes(self, env_ids: Sequence[int]):
+        """分配物品逻辑：基于数量的多订单目标分配及槽位保护。"""
+        #移除obj_to_target_id依赖
+        self.obj_to_source_id[env_ids] = -1
         self.target_need_sku_num[env_ids] = 0
 
-        n_active_skus = getattr(self.cfg, "num_active_skus", 3)         # 规定本局总共出现几种 SKU
-        m_max_per_sku = getattr(self.cfg, "max_instances_per_sku", 2)   # 规定每种 SKU 最多生成几个实例
-
-        #获取当前模式下最大可用的物品槽位数(3或6)
+        n_active_skus = getattr(self.cfg, "num_active_skus", 3)
+        m_max_per_sku = getattr(self.cfg, "max_instances_per_sku", 2)
+        
         max_slots = len(self.ITEM_COL_INDICES)
 
         for env_id in env_ids:
-            #---第1步：采样本局活跃的SKU种类池---
+            #---1. 采样本局活跃的SKU种类---
             num_to_sample = min(n_active_skus, self.num_skus)
             selected_sku_indices = torch.randperm(self.num_skus)[:num_to_sample].tolist()
 
-            #角色划分：如果抽出的SKU种类超过1种，我们把第1种作为“纯干扰物”(订单绝对不需要它)
-            #剩下的种类作为“目标物”(订单需要它，但也可能有多余的同类干扰物)
             num_distractor_skus = 1 if num_to_sample > 1 else 0
             distractor_only_sku_indices = selected_sku_indices[:num_distractor_skus]
             target_sku_indices = selected_sku_indices[num_distractor_skus:]
 
-            # 容量保护指针：记录当前环境已经分配了几个物品
             slots_used = 0
 
-            #---第2步：处理目标SKU(核心需求与盈余干扰逻辑)---
+            #---2. 处理目标SKU(多订单随机分配逻辑)---
             for sku_idx in target_sku_indices:
                 if slots_used >= max_slots: 
-                    break       #槽位已满，停止分配剩余SKU
+                    break
 
                 sku_name = self.sku_names[sku_idx]
-                global_indices = self.sku_to_indices[sku_name]  #获取该类SKU在大数组中的所有实例索引
+                global_indices = self.sku_to_indices[sku_name]
                 
-                #确定可用实例上限(不能超过配置的max_instances_per_sku，也不能超过模型库里实际拥有的数量)
                 max_avail = min(len(global_indices), m_max_per_sku)
-                #核心限制：最大生成量不能超过剩余的槽位数
                 max_can_spawn = min(max_avail, max_slots - slots_used)
                 if max_can_spawn < 1: 
                     continue
                 
-                #【逻辑 A：确定需求量】
-                #目标箱真正需要几个？(随机1到max_avail个)
+                #A: 确定本局总共需要几个该SKU
                 n_need = torch.randint(1, max_can_spawn + 1, (1,)).item()
-                #将需求量写入核心张量(SS-ST模式下，订单箱索引固定为0，即第0个目标箱)
-                self.target_need_sku_num[env_id, 0, sku_idx] = n_need
                 
-                #【逻辑 B：确定实际生成量】
-                #实际在箱子里生成几个？(必须>=n_need，多出来的就是同种类的干扰物)
+                #B: 【核心SS-MT逻辑】将这些需求量随机打散，分配到不同的订单箱中
+                #随机生成n_need个目标箱ID
+                target_box_ids = torch.randint(0, self.num_targets, (n_need,), device=self.device)
+                for tb_id in target_box_ids:
+                    self.target_need_sku_num[env_id, tb_id.item(), sku_idx] += 1
+                
+                #C: 确定实际生成量(包含盈余干扰)
                 n_spawn = torch.randint(n_need, max_can_spawn + 1, (1,)).item()
                 slots_used += n_spawn
                 
-                #从该SKU的所有实例库中，随机抽出n_spawn个具体物体
                 selected_objs = torch.tensor(global_indices)[torch.randperm(len(global_indices))[:n_spawn]]
-                
-                #由于这是SS-ST(单原料箱)，所以选中的物体统统放在第0号原料箱里
                 self.obj_to_source_id[env_id, selected_objs] = 0
 
-            #---第3步：处理纯干扰物SKU(这类物品订单完全不需要)---
+            #---3. 处理纯干扰物SKU---
             for sku_idx in distractor_only_sku_indices:
                 if slots_used >= max_slots:
-                    break       #槽位满了就停止塞入纯干扰物
-
+                    break
+                
                 sku_name = self.sku_names[sku_idx]
                 global_indices = self.sku_to_indices[sku_name]
                 
@@ -112,28 +110,21 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
                 if max_can_spawn < 1:
                     continue
                 
-                #这里不需要改target_need_sku_num，因为它初始化就是0，代表不需要
-                #随机生成1到Max个纯干扰物
                 n_spawn = torch.randint(1, max_can_spawn + 1, (1,)).item()
                 slots_used += n_spawn
                 
                 selected_objs = torch.tensor(global_indices)[torch.randperm(len(global_indices))[:n_spawn]]
-                self.obj_to_source_id[env_id, selected_objs] = 0    #同样放在0号原料箱
+                self.obj_to_source_id[env_id, selected_objs] = 0
 
-        #---第4步：更新全局活跃物体掩码---
-        #只要SourceID不是-1，就说明这个物体在本局游戏中出场了(无论是目标还是干扰)
         self.is_active_mask[env_ids] = (self.obj_to_source_id[env_ids] != -1)
 
     def _spawn_items_in_source_boxes(self, env_ids: Sequence[int]):
-        """
-            根据_assign_objects_boxes决定好的SourceID，将物体物理放置到对应的箱子槽位中。
-            兼容障碍物：根据是否有障碍物动态选择可用槽位。
-        """
+        """物理放置逻辑(完全兼容SS-ST的优良特性)"""
         if not isinstance(env_ids, torch.Tensor):
             env_ids = torch.tensor(env_ids, device=self.device)
         num_envs = len(env_ids)
 
-        #---第1步：清场与零速化---
+        #---1. 清场与零速化---
         zero_vel = torch.zeros((num_envs, 6), device=self.device)
         for obj_asset in self.object_assets:
             far_position = torch.tensor([[100.0, 100.0, -50.0]], device=self.device).repeat(num_envs, 1)
@@ -143,25 +134,12 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
                 obj_asset.write_root_velocity_to_sim(zero_vel, env_ids=env_ids)
 
         def get_params_and_dims(obj_name):
-            # 1. 动态匹配SKU名称(剔除实例后缀_0,_1)
-            base_sku = None
-            for key in SKU_CONFIG.keys():
-                if obj_name.startswith(key):
-                    base_sku = key
-                    break
-            
-            # 2. 从你强大的字典中提取参数
-            if base_sku and base_sku in SKU_CONFIG:
-                p = SKU_CONFIG[base_sku]
-            else:
-                print(f"[Warning] {obj_name}未在SKU_CONFIG找到，回退到默认参数")
-                p = CRACKER_BOX_PARAMS 
-                
+            if "cracker" in obj_name: p = CRACKER_BOX_PARAMS
+            elif "sugar" in obj_name: p = SUGER_BOX_PARAMS
+            elif "soup" in obj_name:  p = TOMATO_SOUP_CAN_PARAMS
+            else: p = CRACKER_BOX_PARAMS 
             raw_x, raw_y, raw_z = p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH']
-            
-            # 这里取SPARSE_ORIENT，如果没有则默认为(0,0,0)
             ori_deg = p.get('SPARSE_ORIENT', (0, 0, 0))
-            
             real_x, real_y, real_z = get_rotated_aabb_size(raw_x, raw_y, raw_z, ori_deg, device=self.device)
             return real_x, real_y, real_z, ori_deg
             
@@ -173,23 +151,20 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
             [-box_x/3,  box_y/4], [0,  box_y/4], [box_x/3,  box_y/4]
         ], device=self.device)
 
-        #---第2步：处理大障碍物(如果存在)---
+        #---2. 处理大障碍物(如果存在)---
         if self.has_obstacles:
             scale_range = (0.4, 1.0)
             for obs_asset in self.obstacle_assets:
-                #A. 随机化Scale并写入仿真
                 rand_scales = torch.rand((num_envs, 1), device=self.device) * (scale_range[1] - scale_range[0]) + scale_range[0]
                 rand_scales = rand_scales.repeat(1, 3) 
                 if hasattr(obs_asset, "write_root_scale_to_sim"):
                     obs_asset.write_root_scale_to_sim(rand_scales, env_ids=env_ids)
                 
-                #B. 计算缩放后的实际物理高度
                 obs_cfg = obs_asset.cfg.spawn
                 raw_size_z = obs_cfg.size[2]
                 current_scale_z = rand_scales[:, 2] 
                 obs_z = (raw_size_z * current_scale_z / 2.0) + 0.015 + 0.019
                 
-                #C. 设置固定位置
                 obs_center_anchor = anchors[self.OBSTACLE_CENTER_INDEX]
                 obs_rel_pos = torch.zeros((num_envs, 3), device=self.device)
                 obs_rel_pos[:, 0] = obs_center_anchor[0]
@@ -204,10 +179,8 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
                 if hasattr(obs_asset, "write_root_velocity_to_sim"):
                     obs_asset.write_root_velocity_to_sim(zero_vel, env_ids=env_ids)
 
-        #---第3步：处理普通物品---
-        #生成槽位序列池。根据是否有障碍物，长度可能是3(左列)或6(全部)
+        #---3. 处理普通物品---
         item_slots_base = torch.tensor(self.ITEM_COL_INDICES, device=self.device)
-        #为每个环境生成独享的乱序可用槽位
         env_item_perms = torch.stack([item_slots_base[torch.randperm(len(self.ITEM_COL_INDICES))] for _ in range(num_envs)])
         
         active_ranks = (self.obj_to_source_id[env_ids] != -1).long().cumsum(dim=1) - 1
@@ -223,14 +196,12 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
             
             relative_quat = euler_to_quat_isaac(item_ori[0],item_ori[1],item_ori[2]).repeat(num_active, 1)
             
-            #查表：提取分配的槽位锚点
             current_ranks = active_ranks[assigned_mask, obj_idx]
             current_slots = env_item_perms[assigned_mask, current_ranks]
             batch_anchors = anchors[current_slots]
 
             margin_x = max(0, (cell_x - item_x) / 2.0 - 0.01)
             margin_y = max(0, (cell_y - item_y) / 2.0 - 0.01)
-
             rand_x = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_x
             rand_y = (torch.rand(num_active, device=self.device) * 2 - 1) * margin_y
             
@@ -253,51 +224,44 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
             if hasattr(obj_asset, "write_root_velocity_to_sim"):
                 obj_asset.write_root_velocity_to_sim(torch.zeros((num_active, 6), device=self.device), env_ids=active_env_ids)
 
-    def _update_spawn_metrics(self, env_ids: Sequence[int] | None = None):
-        # 1. 兼容全局调用和局部重置
-        if env_ids is None:
-            env_ids = list(range(self.num_envs))
-            
+    def _update_spawn_metrics(self):
         # =========================================================
-        # 2. 提取当前需要计算的环境的需求与实际状态
-        # Shape: (len(env_ids), 1, num_skus) 
-        # 注意：在ST模式下，dim=1的长度始终为1
+        # 1. 读取完整的需求与实际矩阵(包含所有的目标箱和所有的SKU)
+        # Shape: (num_envs, num_targets, num_skus)
         # =========================================================
-        target_needs = self.target_need_sku_num[env_ids]
-        actual_in_target = self.target_contain_sku_num[env_ids]
+        target_needs = self.target_need_sku_num 
+        actual_in_target = self.target_contain_sku_num
 
         # =========================================================
-        # 3. 核心得分项张量计算
+        # 2. 核心得分项计算(SS-MT特有：沿dim=1(箱子)和dim=2(SKU)同时求和)
         # =========================================================
-        # A. 正确放入的数量：在唯一的订单箱内，每种SKU的min(需要量, 实际量)的总和
+        # A. 正确抓取量：在每个订单箱内，每种SKU的min(需要量, 实际量)的总和
         correct_picks = torch.minimum(actual_in_target, target_needs).sum(dim=(1, 2))
         
-        # B. 错误/多余放入的数量：放入了不需要的SKU，或者放对了但超过了需求量
+        # B. 错误/多余抓取量：放错了箱子，或者放对了箱子但超过了该箱子该SKU的需求量
         wrong_picks = torch.clamp(actual_in_target - target_needs, min=0).sum(dim=(1, 2))
         
-        # C. 物理掉落计数：状态被标记为10的物品总数(掉到地上)
-        current_obj_states = self.object_states[env_ids]
-        dropped_count = (current_obj_states == 10).sum(dim=1)
+        # C. 物理掉落计数：状态被标记为10的物品总数(仅需沿物品维度求和)
+        # Shape: object_states是(num_envs, num_objects)
+        dropped_count = (self.object_states == 10).sum(dim=1)
         
-        # D. 订单总需求量
+        # D. 订单总需求量：所有目标箱、所有SKU的需求总和
         total_needed = target_needs.sum(dim=(1, 2))
 
         # =========================================================
-        # 4. 最终复合指标计算
+        # 3. 最终复合指标导出
         # =========================================================
-        # 订单完成度: 0.0~1.0(用torch.where防止全0需求导致除以0的NaN报错)
+        # 订单完成度: 0.0~1.0(防止total_needed为0导致除以0报错)
         completion_rate = torch.where(
             total_needed > 0,
             correct_picks.float() / total_needed.float(),
             torch.tensor(1.0, device=self.device) 
         )
         
-        # 完美成功标志: 需求全满，没有任何错拿/多拿，且没有物品掉落
-        is_success = (correct_picks == total_needed) & (wrong_picks == 0) & (dropped_count == 0)
+        # 完美成功标志: 需求全满，且没有任何错拿/多拿/乱扔
+        is_success = (correct_picks == total_needed) & (wrong_picks == 0)
 
-        # =========================================================
-        # 5. 组装与返回
-        # =========================================================
+        # 组装Metrics字典
         self.metrics = {
             "completion_rate": completion_rate,       
             "wrong_pick_count": wrong_picks,         
@@ -312,9 +276,5 @@ class Spawn_ss_st_sparse_CommandTerm(BaseOrderCommandTerm):
     def _update_command(self): 
         pass
 
-    def command(self):
+    def command(self): 
         pass
-
-    def __str__(self) -> str:
-        has_obs = getattr(self, "has_obstacles", False)
-        return "ss_st_sparse_with_obstacles" if has_obs else "ss_st_sparse"

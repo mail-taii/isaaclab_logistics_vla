@@ -28,4 +28,4 @@ class OrderCommandTermCfg(CommandTermCfg):
     )
     debug_vis = False
 
-    from_json: int = 1
+    from_json: int = 0
