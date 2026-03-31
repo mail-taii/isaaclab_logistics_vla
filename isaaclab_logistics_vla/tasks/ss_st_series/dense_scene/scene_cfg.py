@@ -14,13 +14,13 @@ from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
 from isaaclab_logistics_vla.utils.constant import *
 
 SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],60),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],60),
-    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],60),
-    "CN_big": (CN_BIG_PARAMS['USD_PATH'],60),
-    "SF_small": (SF_SMALL_PARAMS['USD_PATH'],60),
-    "empty_plastic_package": (EMPTY_PLASTIC_PACKAGE_PARAMS['USD_PATH'],60),
-    "SF_big": (SF_BIG_PARAMS['USD_PATH'],60),
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],6),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],6),
+    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],6),
+    "CN_big": (CN_BIG_PARAMS['USD_PATH'],6),
+    "SF_small": (SF_SMALL_PARAMS['USD_PATH'],6),
+    "empty_plastic_package": (EMPTY_PLASTIC_PACKAGE_PARAMS['USD_PATH'],6),
+    "SF_big": (SF_BIG_PARAMS['USD_PATH'],6),
 }
 
 
@@ -40,7 +40,7 @@ for sku_name, (usd_path, count) in SKU_DEFINITIONS.items():
     for i in range(count):
         # 实例名: cracker_box_0, cracker_box_1 ...
         instance_name = f"{sku_name}_{i}"
-        print(sku_name)
+        print(111,sku_name)
         if sku_name == "cracker_box" or sku_name == "sugar_box" or sku_name == "tomato_soup_can":
             # 定义 Config
             obj_cfg = RigidObjectCfg(
