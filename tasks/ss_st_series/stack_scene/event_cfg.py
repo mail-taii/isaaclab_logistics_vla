@@ -4,7 +4,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
-from isaaclab_logistics_vla.utils.constant_new import ASSET_ROOT_PATH
+from isaaclab_logistics_vla.utils.constant import ASSET_ROOT_PATH
 
 @configclass
 class Spawn_ss_st_stack_EventCfg:

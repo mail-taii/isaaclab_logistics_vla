@@ -11,7 +11,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
-from isaaclab_logistics_vla.utils.constant_new import *
+from isaaclab_logistics_vla.utils.constant import *
 
 # SKU 定义: (usd_path, count, scale)，仅方盒类物品
 SKU_DEFINITIONS = {

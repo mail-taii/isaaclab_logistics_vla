@@ -10,7 +10,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
-from isaaclab_logistics_vla.utils.constant_new import *
+from isaaclab_logistics_vla.utils.constant import *
 
 # 1. 物品定义保持不变 (对应一排的3个槽位)
 SKU_DEFINITIONS = {

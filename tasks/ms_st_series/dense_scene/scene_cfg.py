@@ -11,7 +11,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.tasks.base_scene_cfg import BaseOrderSceneCfg
-from isaaclab_logistics_vla.utils.constant_new import *
+from isaaclab_logistics_vla.utils.constant import *
 
 SKU_DEFINITIONS = {
     "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],18),
