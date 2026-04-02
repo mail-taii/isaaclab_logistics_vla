@@ -9,7 +9,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -19,7 +19,12 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
+<<<<<<< HEAD
 class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
+=======
+class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
+
+>>>>>>> main
     
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
@@ -508,3 +513,6 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
 
     def command(self):
         pass
+
+    def __str__(self) -> str:
+        return "ss_st_dense"

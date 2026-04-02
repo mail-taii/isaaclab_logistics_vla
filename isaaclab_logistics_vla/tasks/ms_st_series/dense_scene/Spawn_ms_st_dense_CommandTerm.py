@@ -11,7 +11,7 @@ from isaaclab.managers import CommandTerm
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, quat_from_euler_xyz, quat_unique
 
-from isaaclab_logistics_vla.tasks.ms_st_series.Assign_ms_st_CommandTerm import AssignMSSTCommandTerm
+from isaaclab_logistics_vla.tasks.BaseOrderCommandTerm import BaseOrderCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
 from isaaclab_logistics_vla.utils.constant import *
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
-class Spawn_ms_st_dense_CommandTerm(AssignMSSTCommandTerm):
+class Spawn_ms_st_dense_CommandTerm(BaseOrderCommandTerm):
 
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
@@ -459,7 +459,7 @@ class Spawn_ms_st_dense_CommandTerm(AssignMSSTCommandTerm):
         is_success = (correct_picks == total_needed) & (wrong_picks == 0)
 
         # 组装 Metrics 字典，供 Reward(奖励函数) 或 Logger(日志) 直接读取
-        self.metrics = {
+        self.eval_metrics = {
             "completion_rate": completion_rate,       # float: [0.0, 1.0] 适合做 Dense Reward
             "wrong_pick_count": wrong_picks,          # long: 错拿个数 适合做大惩罚项
             "dropped_count": dropped_count,           # long: 掉落个数 适合触发 done 截断
@@ -468,10 +468,13 @@ class Spawn_ms_st_dense_CommandTerm(AssignMSSTCommandTerm):
             "total_needed": total_needed
         }
         
-        return self.metrics
+        return self.eval_metrics
 
     def _update_command(self):
         pass
 
     def command(self):
         pass
+
+    def __str__(self) -> str:
+        return "ms_st_dense"
