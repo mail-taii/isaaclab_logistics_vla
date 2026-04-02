@@ -12,7 +12,7 @@ from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, qu
 from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
-from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.constant_new import *
 from isaaclab_logistics_vla.utils.util import *
 
 if TYPE_CHECKING:
@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
 class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
-
     
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
@@ -60,48 +59,47 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
         TRAY_X_LEN = 0.30
         TRAY_Y_LEN = 0.23
         resolution = 0.005
-        
-        SCALED_OBJECTS1= ["CN_big", "SF_small", "empty_plastic_package", "SF_big"]
-        SCALE_FACTOR1= torch.tensor([0.3, 0.3, 0.3], device=self.device)
-        SCALED_OBJECTS2= ["cracker_box","sugar_box","tomato_soup_can"]
-        SCALE_FACTOR2= torch.tensor([0.8, 0.8, 0.8], device=self.device)
 
         # --- 内部辅助函数: 支持传入 force_ori ---
         def get_real_dims_local(obj_name, force_ori=None):
-            if "cracker" in obj_name: p = CRACKER_BOX_PARAMS
-            elif "sugar" in obj_name: p = SUGER_BOX_PARAMS
-            elif "soup" in obj_name:  p = TOMATO_SOUP_CAN_PARAMS
-            elif "CN_big" in obj_name: p = CN_BIG_PARAMS
-            elif "SF_small" in obj_name: p = SF_SMALL_PARAMS
-            elif "empty_plastic_package" in obj_name: p = EMPTY_PLASTIC_PACKAGE_PARAMS
-            elif "SF_big" in obj_name: p = SF_BIG_PARAMS
-            else: p = CRACKER_BOX_PARAMS 
-
-            raw_dims = torch.tensor([p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH']], device=self.device)
-            if any(s in obj_name for s in SCALED_OBJECTS1): 
-                raw_dims *= SCALE_FACTOR1
-            elif any(s in obj_name for s in SCALED_OBJECTS2): 
-                raw_dims *= SCALE_FACTOR2
-            
-            if force_ori is not None:
-                # 情况 A: 强制使用传入的朝向 (保持一致性)
-                ori_deg = force_ori
-                print(f"Object {obj_name} is forced to use orientation {ori_deg}")
+            # 1. 直接从全局字典 SKU_CONFIG 中精准查找配置
+            if obj_name in SKU_CONFIG:
+                p = SKU_CONFIG[obj_name]
             else:
-                # 情况 B: 没有强制，则随机选一个新的 (通常用于初始化)
-                ori_deg_options = p.get('DENSE_ORIENT', (0, 0, 0)) # 这里根据你需要用 DENSE 或 SPARSE
+                print(f"[警告] 字典中找不到物品: {obj_name}，将使用默认兜底参数！")
+                # 兜底方案：随便取字典里的第一个，防止程序直接崩溃
+                p = next(iter(SKU_CONFIG.values())) 
+
+            # 2. 获取基础长宽高
+            raw_dims = torch.tensor([p['X_LENGTH'], p['Y_LENGTH'], p['Z_LENGTH']], device=self.device)
+            
+            # 3. 处理缩放 (优先使用配置表自带的 DENSE_SCALE)
+            dense_scale = p.get('DENSE_SCALE', 1.0)
+            raw_dims *= dense_scale
+            
+            # 4. 处理朝向
+            if force_ori is not None:
+                # 情况 A: 强制使用传入的朝向
+                ori_deg = force_ori
+            else:
+                # 情况 B: 没有强制，则查表获取选项并决定
+                ori_deg_options = p.get('DENSE_ORIENT', (10, 10, 10))
+                print(ori_deg_options)
                 
                 if isinstance(ori_deg_options, list):
-                    # 使用 torch 生成随机索引
+                    # 如果有多个朝向选项（如 [(0,90,0), (0,0,0)]），随机选一个
                     idx = torch.randint(0, len(ori_deg_options), (1,)).item()
                     ori_deg = ori_deg_options[idx]
                 else:
+                    # 如果只有一个元组（如 (0,0,0)）
                     ori_deg = ori_deg_options
 
+            # 5. 计算旋转后的真实包围盒尺寸
             real_x, real_y, real_z = get_rotated_aabb_size(
                 raw_dims[0], raw_dims[1], raw_dims[2], ori_deg, device=self.device
             )
             return real_x, real_y, real_z, ori_deg
+        
 
         # ==========================================
         # 1. 遍历环境进行分配和计算
@@ -129,7 +127,7 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
                     item_x, item_y, item_z, item_ori = get_real_dims_local(sku_name, force_ori=fixed_ori)
                     
                     # ... (后续容量计算逻辑保持不变) ...
-                    margin = 0.01
+                    margin = 0.01 # 物品间隙
                     inner_x = TRAY_X_LEN - 0.01
                     inner_y = TRAY_Y_LEN - 0.01
                     eff_item_x = item_x + margin
@@ -155,9 +153,21 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
                         pos_y = start_y_local + grid_y * eff_item_y
                         
                         TRAY_THICK = 0.01
-                        pos_z = TRAY_THICK + (item_z / 2.0) + 0.005
+                        pos_z = TRAY_THICK + (item_z / 2.0) + 0.02
+                        
                         
                         self.saved_relative_pos[env_idx_int, obj_idx] = torch.tensor([pos_x, pos_y, pos_z], device=self.device)
+
+                        if env_idx_int == 0 and rank == 0: 
+                            print("-" * 40)
+                            print(f"[Debug Pos] 当前物品: {sku_name}")
+                            print(f"[Debug Pos] 物品真实尺寸 (X, Y, Z): ({item_x:.4f}, {item_y:.4f}, {item_z:.4f})")
+                            print(f"[Debug] 物品 {sku_name} 计算出的相对坐标: X={pos_x:.3f}, Y={pos_y:.3f}, Z={pos_z:.3f}")
+                            print(f"[Debug Pos] 托盘内部可用空间 (inner_x, inner_y): ({inner_x:.4f}, {inner_y:.4f})")
+                            print(f"[Debug Pos] 网格左下角起点 (start_x_local, start_y_local): ({start_x_local:.4f}, {start_y_local:.4f})")
+                            print("-" * 40)
+
+                        
                         
                         # [注意] 这里使用的是 item_ori (即 fixed_ori)
                         quat = euler_to_quat_isaac(item_ori[0], item_ori[1], item_ori[2])
@@ -191,7 +201,7 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
                 # --- 收集候选物体 ---
                 candidates = []
                 
-                # [修改] 统一为所有被选中的 SKU 抽取对应数量的物理实例
+                # 统一为所有被选中的 SKU 抽取对应数量的物理实例
                 for sku_idx in selected_sku_indices:
                     sku_name = self.sku_names[sku_idx]
                     
@@ -218,7 +228,7 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
                 border = 1
                 env_map[:border, :] = 1; env_map[-border:, :] = 1
                 env_map[:, :border] = 1; env_map[:, -border:] = 1
-                GAP = 0.005
+                GAP = 0.01 # 
                 
                 # --- 尝试逐个放置 ---
                 for obj_idx, is_target, obj_name in candidates:
@@ -250,7 +260,7 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
                                 center_offset_y = (obj_h_grid * resolution) / 2.0
                                 pos_x = (rx * resolution) - (BOX_X_LEN / 2.0) + center_offset_x
                                 pos_y = (ry * resolution) - (BOX_Y_LEN / 2.0) + center_offset_y
-                                z_pos = (item_z / 2.0) + 0.015 + 0.002
+                                z_pos = (item_z / 2.0) + 0.015 + 0.02
                                 
                                 self.saved_relative_pos[env_idx_int, obj_idx] = torch.tensor([pos_x, pos_y, z_pos], device=self.device)
                                 

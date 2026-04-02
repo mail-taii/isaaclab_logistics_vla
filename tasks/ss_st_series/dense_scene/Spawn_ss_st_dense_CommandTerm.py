@@ -12,7 +12,7 @@ from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, qu
 from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
-from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.constant_new import *
 from isaaclab_logistics_vla.utils.util import *
 
 if TYPE_CHECKING:
@@ -153,7 +153,7 @@ class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
                         pos_y = start_y_local + grid_y * eff_item_y
                         
                         TRAY_THICK = 0.01
-                        pos_z = TRAY_THICK + (item_z / 2.0) + 0.005
+                        pos_z = TRAY_THICK + (item_z / 2.0) + 0.01
                         
                         self.saved_relative_pos[env_idx_int, obj_idx] = torch.tensor([pos_x, pos_y, pos_z], device=self.device)
                         

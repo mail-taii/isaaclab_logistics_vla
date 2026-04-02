@@ -50,7 +50,7 @@ class CurriculumCfg:
 class Spawn_ss_st_dense_EnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the lifting environment."""
     # Scene settings
-    scene: Spawn_ss_st_dense_SceneCfg = Spawn_ss_st_dense_SceneCfg(num_envs=4,env_spacing = 7.0)
+    scene: Spawn_ss_st_dense_SceneCfg = Spawn_ss_st_dense_SceneCfg(num_envs=1,env_spacing = 4.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions  = register.load_action_configs('realman_franka_ee_actionscfg')()
@@ -65,7 +65,7 @@ class Spawn_ss_st_dense_EnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2
-        self.episode_length_s = 10
+        self.episode_length_s = 4
         # simulation settings
         self.sim.dt = 0.02  # 100Hz
         self.sim.render_interval = self.decimation

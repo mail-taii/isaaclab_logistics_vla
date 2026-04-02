@@ -12,7 +12,7 @@ from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, qu
 from isaaclab_logistics_vla.tasks.ms_st_series.Assign_ms_st_CommandTerm import AssignMSSTCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
-from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.constant_new import *
 from isaaclab_logistics_vla.utils.util import *
 
 if TYPE_CHECKING:

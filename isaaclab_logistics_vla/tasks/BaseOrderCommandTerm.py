@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 from isaaclab_logistics_vla.utils.object_position import *
-from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.constant_new import *
 from isaaclab_logistics_vla.utils.util import *
 from isaaclab_logistics_vla.utils.path_utils import *
 

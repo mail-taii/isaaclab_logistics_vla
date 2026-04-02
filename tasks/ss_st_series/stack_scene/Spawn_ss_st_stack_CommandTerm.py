@@ -13,7 +13,7 @@ from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, qu
 from isaaclab_logistics_vla.tasks.ss_st_series.Assign_ss_st_CommandTerm import AssignSSSTCommandTerm
 
 from isaaclab_logistics_vla.utils.object_position import *
-from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.constant_new import *
 from isaaclab_logistics_vla.utils.util import *
 from .scene_cfg import SKU_DEFINITIONS
 

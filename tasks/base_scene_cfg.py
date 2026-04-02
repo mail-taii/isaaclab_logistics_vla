@@ -10,7 +10,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
-from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.constant_new import *
 
 @configclass
 class BaseOrderSceneCfg(InteractiveSceneCfg):
