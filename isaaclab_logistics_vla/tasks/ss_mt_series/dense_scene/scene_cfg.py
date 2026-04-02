@@ -25,7 +25,7 @@ SKU_DEFINITIONS = {
 }
 '''
 
-DENSE_SCENE_OBJECTS = ['woodenblock_base2','woodenblock_base4']
+DENSE_SCENE_OBJECTS = ['cracker_box','sugar_box','tomato_soup_can','cn_big','sf_small','plastic_package','sf_big']
 
 
 # 每种 SKU 的默认实例数（可按需调整，也可在 constant.py 每个 PARAMS 里加 STACK_COUNT 覆盖）
@@ -42,7 +42,7 @@ for _sku_name in DENSE_SCENE_OBJECTS:
     )
 
 @configclass
-class Spawn_ss_st_dense_SceneCfg(BaseOrderSceneCfg):
+class Spawn_ss_mt_dense_SceneCfg(BaseOrderSceneCfg):
     
     robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
     robot.init_state.pos  = (0.96781,2.28535,0.216)
@@ -73,7 +73,7 @@ for sku_name, (usd_path, count, scale) in SKU_DEFINITIONS.items():
         delta+=1
         # [关键] 动态注入到 MySceneCfg 类中
         # 这样 Isaac Lab 解析时就能看到这些属性
-        setattr(Spawn_ss_st_dense_SceneCfg, instance_name, obj_cfg)
+        setattr(Spawn_ss_mt_dense_SceneCfg, instance_name, obj_cfg)
 
 
 ASSET_ROOT_PATH = os.getenv("ASSET_ROOT_PATH", "")
@@ -90,4 +90,4 @@ for i in range(6):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(300, 300, 0),rot=(1, 0, 0, 0)),
     )
-    setattr(Spawn_ss_st_dense_SceneCfg, f"tray_{i}", tray_cfg)
+    setattr(Spawn_ss_mt_dense_SceneCfg, f"tray_{i}", tray_cfg)
