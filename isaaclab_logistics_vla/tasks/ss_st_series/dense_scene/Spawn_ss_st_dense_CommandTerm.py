@@ -19,12 +19,8 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
-<<<<<<< HEAD
-class Spawn_ss_st_dense_CommandTerm(AssignSSSTCommandTerm):
-=======
 class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
 
->>>>>>> main
     
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
