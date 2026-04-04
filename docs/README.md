@@ -40,6 +40,8 @@ env = gym.make("Isaac-Logistics-SingleArmSorting-v0")
 
 See the [API documentation](api.md) for detailed information.
 
+- 中文：[CuRobo 运动规划封装说明](CuRobo规划器封装说明.md)（`utils/curobo_planner` 与验证脚本）
+
 ## License
 
 BSD-3-Clause

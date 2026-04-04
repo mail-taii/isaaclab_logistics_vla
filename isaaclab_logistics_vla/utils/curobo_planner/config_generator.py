@@ -1,57 +1,68 @@
 """
-从URDF生成cuRobo机器人配置
+从 URDF 生成 cuRobo RobotConfig（双臂：主 ee_link + link_names 包含左右末端）。
+缓存 YAML 仅保存可重建的 ``CudaRobotGeneratorConfig`` 字段（与 ``RobotConfig.from_dict`` 一致）；
+勿使用 ``RobotConfig.write_config``，其对 ``CudaRobotModelConfig`` 做 ``vars()`` 会混入不可 YAML 序列化的对象。
 """
 import os
-from typing import Optional, Tuple
+from dataclasses import asdict
+from typing import Any, Dict, Optional
+
 import yaml
 
+from curobo.cuda_robot_model.cuda_robot_generator import CudaRobotGeneratorConfig
+from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModelConfig
 from curobo.types.base import TensorDeviceType
 from curobo.types.robot import RobotConfig
-from curobo.cuda_robot_model.util.curobo_robot_world import CuroboRobotWorld
+
+
+def _generator_config_to_cache_dict(gen_cfg: CudaRobotGeneratorConfig) -> Dict[str, Any]:
+    """序列化生成器配置，供 ``RobotConfig.from_dict`` 从缓存恢复。"""
+    d = asdict(gen_cfg)
+    d.pop("tensor_args", None)
+    # 去掉 None，减少体积；加载时用调用方 ``tensor_args`` 与默认值补全
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def _write_robot_config_yaml(gen_cfg: CudaRobotGeneratorConfig, output_path: str) -> None:
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    payload = {"kinematics": _generator_config_to_cache_dict(gen_cfg)}
+    with open(output_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(payload, f, sort_keys=False, allow_unicode=True)
 
 
 def generate_robot_config_from_urdf(
     urdf_path: str,
     output_path: Optional[str] = None,
-    base_link: str = "base_link",
-    left_ee_link: str = "left_ee",
-    right_ee_link: str = "right_ee",
-    tensor_args: TensorDeviceType = None,
+    base_link: str = "dual_rm_75b_description_platform_base_link",
+    left_ee_link: str = "panda_left_hand",
+    right_ee_link: str = "panda_right_hand",
+    tensor_args: Optional[TensorDeviceType] = None,
 ) -> RobotConfig:
     """
-    从URDF生成cuRobo机器人配置
-    
-    参数:
-        urdf_path: URDF文件路径
-        output_path: 输出配置文件路径(可选)
-        base_link: 基座链接名称
-        left_ee_link: 左臂末端执行器链接名称
-        right_ee_link: 右臂末端执行器链接名称
-        tensor_args: 张量设备类型
-    
-    返回:
-        RobotConfig对象
+    从 URDF 生成双臂 RobotConfig（与 MotionGen 的 batch 双末端 Pose 一致）。
+
+    使用 ``CudaRobotGeneratorConfig``：``ee_link`` 为主链末端，``link_names`` 同时包含左右末端。
     """
     if tensor_args is None:
         tensor_args = TensorDeviceType()
-    
-    # 使用cuRobo从URDF创建机器人配置
-    # 对于双臂机器人，我们需要获取所有关节和两个末端连杆
-    robot_config = RobotConfig.from_basic(
-        urdf_path,
-        base_link,
-        [left_ee_link, right_ee_link],
-        tensor_args,
-        self_collision_check=True,
+
+    link_names = list(dict.fromkeys([left_ee_link, right_ee_link]))
+
+    gen_cfg = CudaRobotGeneratorConfig(
+        base_link=base_link,
+        ee_link=left_ee_link,
+        tensor_args=tensor_args,
+        urdf_path=urdf_path,
+        link_names=link_names,
     )
-    
-    # 如果提供了输出路径，保存为YAML
+    kin = CudaRobotModelConfig.from_config(gen_cfg)
+    robot_config = RobotConfig(kinematics=kin, tensor_args=tensor_args)
+
     if output_path is not None:
-        # 将配置转换为字典并保存
-        config_dict = robot_config.model_dump()
-        with open(output_path, 'w') as f:
-            yaml.dump(config_dict, f, default_flow_style=False)
-    
+        _write_robot_config_yaml(gen_cfg, output_path)
+
     return robot_config
 
 
@@ -84,10 +95,7 @@ def load_realman_config(
     robot_config = generate_robot_config_from_urdf(
         urdf_path=urdf_path,
         output_path=cache_path,
-        base_link="base_link",
-        left_ee_link="left_ee",
-        right_ee_link="right_ee",
-        tensor_args=tensor_args
+        tensor_args=tensor_args,
     )
     
     return robot_config
@@ -97,7 +105,7 @@ if __name__ == "__main__":
     # 测试生成Realman配置
     cache_dir = os.path.expanduser("~/.cache/curobo_realman")
     os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, "realman_config.yaml")
+    cache_path = os.path.join(cache_dir, "realman_config_v2.yaml")
     
     print(f"Generating Realman robot config from URDF...")
     robot_config = load_realman_config(
@@ -107,4 +115,7 @@ if __name__ == "__main__":
     
     print(f"Config generated successfully!")
     print(f"Saved to: {cache_path}")
-    print(f"Number of joints: {len(robot_config.kinematics.joint_limits)}")
+    jl = robot_config.kinematics.joint_limits
+    n_j = getattr(jl, "position", jl)
+    n_j = n_j.shape[-1] if hasattr(n_j, "shape") else "?"
+    print(f"Joint limits dim: {n_j}")

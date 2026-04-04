@@ -1,367 +1,339 @@
 """
-cuRobo运动规划器封装
-独立可调用工具，支持双臂运动规划
-处理坐标变换：机器人正面沿y轴 -> cuRobo标准x轴
+cuRobo 运动规划封装（参照 RoboTwin envs/robot/planner.py 中 CuroboPlanner 的用法）：
+
+- 构造期：加载 RobotConfig、构建 MotionGen、warmup、可选世界障碍物。
+- 规划期：双臂 ``plan_dual`` / ``plan`` 返回 **dict + CPU numpy**，不向上层暴露 CuRobo Tensor 类型。
+- 夹爪：``plan_grippers`` 为线性插值，与 RoboTwin 一致，不经 CuRobo。
+
+坐标：默认将「机器人系 (x 右, y 前, z 上)」下的位姿经绕 z 轴 -90° 对齐到 cuRobo 常用前向 x；若你的资产已与 cuRobo 一致，构造时设 ``apply_robot_to_curobo_frame_transform=False``。
 """
-import os
+from __future__ import annotations
+
 import math
-from typing import List, Dict, Tuple, Optional
+import os
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
+from curobo.geom.sdf.world import CollisionCheckerType
+from curobo.geom.types import Cuboid, WorldConfig
 from curobo.types.base import TensorDeviceType
-from curobo.types.robot import RobotConfig, JointState
 from curobo.types.math import Pose
+from curobo.types.robot import RobotConfig
 from curobo.types.state import JointState
-from curobo.types.geometry import Cuboid
-from curobo.geom.types import WorldConfig
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 
 from .config_generator import load_realman_config
+from .result_utils import motion_gen_batch_result_to_plan_dict, plan_grippers_linear
+
+
+@contextmanager
+def _curobo_autograd_context() -> Iterator[None]:
+    """在 Isaac 等 ``torch.inference_mode()`` 嵌套环境中安全运行 cuRobo。
+
+    - 优化需要 ``enable_grad`` 才能 ``backward``。
+    - ``MotionGen`` 若在 inference 下构造会得到 inference tensor，随后在非 inference 下
+      ``copy_`` 会报 *Inplace update to inference tensor outside InferenceMode*。
+    因此相关 **配置加载、MotionGen 构造、warmup、plan_batch** 均应在该上下文中执行。
+    """
+    with torch.inference_mode(False):
+        with torch.enable_grad():
+            yield
 
 
 class CuroboPlanner:
     """
-    cuRobo运动规划器封装类
-    
-    支持:
-    - 从URDF自动加载Realman双臂机器人配置
-    - 设置世界障碍物
-    - 双臂联合运动规划
-    - 单臂独立运动规划
-    - 坐标变换处理（机器人y轴朝前 -> cuRobo x轴朝前）
+    RoboTwin 风格封装：上层只使用 numpy 与标准 dict。
+
+    主要 API：
+        - ``plan_dual`` / ``plan``：双臂末端目标 → ``{status, position, velocity, ...}``
+        - ``plan_single_arm``：单臂移动，另一臂目标位姿由调用方给出（通常取当前末端位姿）
+        - ``plan_grippers``：夹爪插值 dict
+        - ``reset``：重置 MotionGen 内部状态
     """
-    
+
+    dof_dual_arm: int = 14
+
     def __init__(
         self,
         urdf_path: str = "/home/junzhe/Benchmark/robot/realman/realman_franka_ee.urdf",
         device: str = "cuda:0",
         use_curobo_cache: bool = True,
         cache_path: Optional[str] = None,
+        interpolation_dt: float = 0.05,
+        apply_robot_to_curobo_frame_transform: bool = True,
+        use_cuda_graph: bool = False,
     ):
-        """
-        初始化cuRobo运动规划器
-        
-        参数:
-            urdf_path: 机器人URDF文件路径
-            device: 计算设备
-            use_curobo_cache: 是否使用缓存加速配置生成
-            cache_path: 配置缓存路径，None则使用默认位置
-        """
         self.device = device
         self.tensor_args = TensorDeviceType(device=device)
-        
-        # 加载机器人配置
+        self.apply_frame_transform = apply_robot_to_curobo_frame_transform
+        self.interpolation_dt = interpolation_dt
+
         if cache_path is None and use_curobo_cache:
             cache_dir = os.path.expanduser("~/.cache/curobo_realman")
             os.makedirs(cache_dir, exist_ok=True)
-            cache_path = os.path.join(cache_dir, "realman_config.yaml")
-        
-        self.robot_config = load_realman_config(
-            urdf_path=urdf_path,
-            cache_path=cache_path,
-            device=device
-        )
-        
-        # 创建运动规划配置
-        self.motion_gen_config = MotionGenConfig.load_from_robot_config(
-            self.robot_config,
-            None,  # world will be set later
-            self.tensor_args,
-            interpolation_steps=100,
-            num_trajopt_iterations=10,
-            use_batch_cc=True,
-        )
-        
-        # 创建运动生成器
-        self.motion_gen = MotionGen(self.motion_gen_config)
-        self.motion_gen.warmup()
-        
-        # 初始化世界为空
+            # v2: 与 realman_franka_ee.urdf 的 panda_*_hand 末端命名一致（旧缓存含 left_ee 会 KeyError）
+            cache_path = os.path.join(cache_dir, "realman_config_v2.yaml")
+
+        # 整块放入非 inference 上下文，避免内部缓冲区成为 inference tensor 且与 warmup/plan 冲突
+        with _curobo_autograd_context():
+            self.robot_config = load_realman_config(
+                urdf_path=urdf_path,
+                cache_path=cache_path,
+                device=device,
+            )
+            # world_model 不可为 None：否则 cuRobo 不会创建 world_coll_checker，后续 update_world 会崩。
+            self.motion_gen_config = MotionGenConfig.load_from_robot_config(
+                self.robot_config,
+                WorldConfig(),
+                tensor_args=self.tensor_args,
+                interpolation_dt=interpolation_dt,
+                use_cuda_graph=use_cuda_graph,
+                collision_checker_type=CollisionCheckerType.PRIMITIVE,
+            )
+            self.motion_gen = MotionGen(self.motion_gen_config)
+            self.motion_gen.warmup()
+
         self.world_config = WorldConfig()
         self._update_world()
-        
-        # 存储最近一次规划结果
-        self.last_result = None
-        
-        # 坐标变换：机器人y轴朝前 -> cuRobo x轴朝前
-        # 绕z轴旋转 -90度
+
+        self.last_result: Any = None
+        self.last_plan_dict: Optional[dict[str, Any]] = None
+
         self.rotation_transform = self._get_rotation_transform()
-    
+
     def _get_rotation_transform(self) -> np.ndarray:
-        """
-        获取坐标变换矩阵 将机器人坐标系(x:右, y:前, z:上) 
-        转换为cuRobo坐标系(x:前, y:左, z:上)
-        
-        实际上就是绕z轴旋转-90度
-        """
-        theta = -math.pi / 2  # -90 degrees
-        rot = np.array([
-            [math.cos(theta), -math.sin(theta), 0],
-            [math.sin(theta),  math.cos(theta), 0],
-            [0, 0, 1]
-        ])
-        return rot
-    
-    def _transform_pose(self, position: np.ndarray, quaternion: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        将机器人坐标系的位姿转换为cuRobo坐标系
-        
-        参数:
-            position: (3,) 位置 xyz（机器人坐标系）
-            quaternion: (4,) 四元数 wxyz（机器人坐标系）
-        
-        返回:
-            (position_curobo, quaternion_curobo) 转换后的位姿
-        """
-        # 旋转位置
-        position_curobo = self.rotation_transform @ position
-        
-        # 旋转四元数：绕z轴旋转-90度
-        # 四元数的旋转也需要相应变换
-        theta = -math.pi / 4
-        q_rot = np.array([math.cos(theta), 0, 0, math.sin(theta)])  # w, x, y, z
-        
-        # 四元数乘法: q_result = q_rot * q
+        """绕 z 轴 -90°：机器人 y 朝前 → cuRobo x 朝前（位置用）。"""
+        theta = -math.pi / 2
+        return np.array(
+            [
+                [math.cos(theta), -math.sin(theta), 0],
+                [math.sin(theta), math.cos(theta), 0],
+                [0, 0, 1],
+            ],
+            dtype=np.float64,
+        )
+
+    def _quat_rotate_z(self, quaternion_wxyz: np.ndarray, angle_rad: float) -> np.ndarray:
+        """绕世界 z 轴旋转四元数（wxyz）。"""
+        half = angle_rad * 0.5
+        q_rot = np.array([math.cos(half), 0.0, 0.0, math.sin(half)], dtype=np.float64)
         w1, x1, y1, z1 = q_rot
-        w2, x2, y2, z2 = quaternion
-        
+        w2, x2, y2, z2 = np.asarray(quaternion_wxyz, dtype=np.float64).reshape(4)
         w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
         x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
         y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
         z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
-        
-        quaternion_curobo = np.array([w, x, y, z])
-        
+        return np.array([w, x, y, z], dtype=np.float64)
+
+    def _transform_pose(
+        self, position: np.ndarray, quaternion: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        if not self.apply_frame_transform:
+            return np.asarray(position, dtype=np.float64), np.asarray(quaternion, dtype=np.float64)
+        position_curobo = self.rotation_transform @ np.asarray(position, dtype=np.float64).reshape(3)
+        quaternion_curobo = self._quat_rotate_z(np.asarray(quaternion).reshape(4), -math.pi / 2)
         return position_curobo, quaternion_curobo
-    
+
     def _update_world(self) -> None:
-        """更新世界到motion_gen"""
         self.motion_gen.update_world(self.world_config)
-    
+
     def set_world(self, obstacles: List[Dict[str, np.ndarray]]) -> None:
         """
-        设置世界障碍物配置
-        
-        参数:
-            obstacles: 障碍物列表，每个障碍物是字典:
-                {
-                    'position': (3,) 世界坐标系位置 xyz（机器人坐标系）
-                    'quaternion': (4,) 四元数 wxyz（机器人坐标系，可选，默认单位四元数）
-                    'size': (3,) 长方体尺寸 xyz
-                }
+        设置世界障碍物（长方体列表）。
+
+        每个元素字典字段：
+            - ``position``: (3,) 机器人约定坐标系下的位置
+            - ``size`` / ``dims``: (3,) 长方体尺寸
+            - ``quaternion``: 可选 (4,) wxyz，默认单位四元数
         """
-        # 创建新的世界配置
-        world_config = WorldConfig()
-        cuboids = []
-        
-        for obs in obstacles:
-            pos = obs['position']
-            size = obs['size']
-            quat = obs.get('quaternion', np.array([1.0, 0.0, 0.0, 0.0]))
-            
-            # 坐标变换
-            pos_curobo, quat_curobo = self._transform_pose(pos, quat)
-            
-            # 创建cuboid，pose格式是 [x, y, z, qw, qx, qy, qz]
-            pose = np.concatenate([pos_curobo, quat_curobo])
-            
-            cuboid = Cuboid(
-                pose=pose,
-                dims=size,
+        cuboids: List[Cuboid] = []
+        for i, obs in enumerate(obstacles):
+            pos = np.asarray(obs["position"], dtype=np.float64).reshape(3)
+            size = obs.get("size", obs.get("dims"))
+            if size is None:
+                raise KeyError("obstacle 需要 'size' 或 'dims'")
+            size = np.asarray(size, dtype=np.float64).reshape(3)
+            quat = obs.get("quaternion", np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64))
+            pos_c, quat_c = self._transform_pose(pos, quat)
+            pose = np.concatenate([pos_c, quat_c]).astype(np.float64).tolist()
+            cuboids.append(
+                Cuboid(
+                    name=obs.get("name", f"obs_{i}"),
+                    pose=pose,
+                    dims=size.astype(float).tolist(),
+                )
             )
-            cuboids.append(cuboid)
-        
-        world_config.cuboid = cuboids
-        self.world_config = world_config
-        
-        # 更新到motion_gen
+        self.world_config = WorldConfig(cuboid=cuboids)
         self._update_world()
-    
+
     def clear_world(self) -> None:
-        """清空所有障碍物"""
         self.world_config = WorldConfig()
         self._update_world()
-    
+
+    def reset(self, reset_seed: bool = True) -> None:
+        if hasattr(self.motion_gen, "reset"):
+            self.motion_gen.reset(reset_seed=reset_seed)
+
+    @staticmethod
+    def plan_grippers(now_val: float, target_val: float, num_step: int = 200) -> dict[str, Any]:
+        return plan_grippers_linear(now_val, target_val, num_step=num_step)
+
+    def plan_dual(
+        self,
+        start_joint_positions: np.ndarray,
+        goal_poses: Dict[str, Dict[str, np.ndarray]],
+        max_attempts: int = 60,
+        timeout: float = 10.0,
+        enable_graph: bool = True,
+        enable_opt: bool = True,
+    ) -> dict[str, Any]:
+        """
+        双臂同时规划（``plan_batch``，batch=1）。
+
+        参数:
+            start_joint_positions: (14,) 左 7 + 右 7
+            goal_poses: ``{'left': {'position','quaternion'}, 'right': {...}}``，与 ``set_world`` 同坐标约定
+
+        返回:
+            RoboTwin 风格 dict：``status`` / ``position`` (T,14) / ``velocity`` / ``detail`` 等
+        """
+        start_joint_positions = np.asarray(start_joint_positions, dtype=np.float32).reshape(-1)
+        if start_joint_positions.shape[0] != self.dof_dual_arm:
+            raise ValueError(
+                f"期望起始关节 shape ({self.dof_dual_arm},)，得到 {start_joint_positions.shape}"
+            )
+        if "left" not in goal_poses or "right" not in goal_poses:
+            raise KeyError("goal_poses 必须包含 'left' 与 'right'")
+
+        positions: List[np.ndarray] = []
+        quaternions: List[np.ndarray] = []
+        for arm in ("left", "right"):
+            pos = np.asarray(goal_poses[arm]["position"], dtype=np.float64).reshape(3)
+            quat = np.asarray(goal_poses[arm]["quaternion"], dtype=np.float64).reshape(4)
+            pc, qc = self._transform_pose(pos, quat)
+            positions.append(pc.astype(np.float32))
+            quaternions.append(qc.astype(np.float32))
+
+        pos_arr = np.stack(positions, axis=0)[np.newaxis, :, :]
+        quat_arr = np.stack(quaternions, axis=0)[np.newaxis, :, :]
+
+        plan_config = MotionGenPlanConfig(
+            enable_graph=enable_graph,
+            enable_opt=enable_opt,
+            max_attempts=max_attempts,
+            timeout=timeout,
+        )
+
+        # 张量须在非 inference_mode 下创建，否则 cuRobo 内部 cost 无法 backward
+        with _curobo_autograd_context():
+            start_t = self.tensor_args.to_device(start_joint_positions[np.newaxis, :])
+            start_state = JointState.from_position(start_t)
+            positions_tensor = self.tensor_args.to_device(pos_arr)
+            quaternions_tensor = self.tensor_args.to_device(quat_arr)
+            goal_pose = Pose(position=positions_tensor, quaternion=quaternions_tensor)
+            result = self.motion_gen.plan_batch(start_state, goal_pose, plan_config)
+        self.last_result = result
+        plan_dict = motion_gen_batch_result_to_plan_dict(result, batch_index=0)
+        self.last_plan_dict = plan_dict
+        return plan_dict
+
     def plan(
         self,
         start_joint_positions: np.ndarray,
         goal_poses: Dict[str, Dict[str, np.ndarray]],
-        dt: float = 0.05,
-    ) -> Tuple[bool, np.ndarray]:
+        dt: Optional[float] = None,
+        **kwargs: Any,
+    ) -> Union[dict[str, Any], Tuple[bool, np.ndarray]]:
         """
-        规划双臂运动轨迹
-        
-        参数:
-            start_joint_positions: (14,) 起始关节位置
-                [left_arm_joints(7), right_arm_joints(7)]
-            goal_poses: 目标位姿字典:
-                {
-                    'left': {'position': (3,), 'quaternion': (4,)},
-                    'right': {'position': (3,), 'quaternion': (4,)},
-                }
-                位姿使用机器人坐标系（正面沿y轴）
-            dt: 插值轨迹的时间步长
-        
-        返回:
-            success: 是否规划成功
-            trajectory: (T, 14) 关节位置轨迹，每一行为一个时间步
+        兼容旧 API：默认返回 **dict**。
+
+        若 ``legacy_tuple_return=True`` 传入 kwargs（不推荐），则仍返回 ``(success, trajectory)``。
+        ``dt`` 已弃用：插值步长由构造参数 ``interpolation_dt`` 决定；传入时仅触发 ``UserWarning``。
         """
-        # 检查输入维度
-        assert start_joint_positions.shape == (14,), f"Expected (14,) start joints, got {start_joint_positions.shape}"
-        assert 'left' in goal_poses and 'right' in goal_poses, "goal_poses must contain 'left' and 'right'"
-        
-        # 创建起始状态
-        start_joint_tensor = self.tensor_args.to_device(start_joint_positions[np.newaxis, :])
-        start_state = JointState.from_position(start_joint_tensor)
-        
-        # 处理目标位姿 - 需要组合两个末端的目标位姿
-        positions = []
-        quaternions = []
-        
-        for arm in ['left', 'right']:
-            pos = goal_poses[arm]['position']
-            quat = goal_poses[arm]['quaternion']
-            
-            # 坐标变换
-            pos_curobo, quat_curobo = self._transform_pose(pos, quat)
-            positions.append(pos_curobo)
-            quaternions.append(quat_curobo)
-        
-        # 组合为批张量 [batch=1, n_ee=2, 3/4]
-        positions_tensor = self.tensor_args.to_device(np.array(positions)[np.newaxis, :, :])
-        quaternions_tensor = self.tensor_args.to_device(np.array(quaternions)[np.newaxis, :, :])
-        
-        goal_pose = Pose(position=positions_tensor, quaternion=quaternions_tensor)
-        
-        # 创建规划配置
-        plan_config = MotionGenPlanConfig(
-            enable_graph=True,
-            enable_optimization=True,
-            do_interpolation=True,
-            interpolation_dt=dt,
-        )
-        
-        # 执行规划
-        result = self.motion_gen.plan_batch(start_state, goal_pose, plan_config)
-        self.last_result = result
-        
-        # 检查是否成功
-        success = result.success[0].item()
-        
-        if not success:
-            return False, np.array([])
-        
-        # 获取插值轨迹
-        interpolated = result.get_interpolated_plan()
-        trajectory = interpolated.position.cpu().numpy()  # [T, 14]
-        
-        return True, trajectory
-    
+        import warnings
+
+        if dt is not None and abs(dt - self.interpolation_dt) > 1e-6:
+            warnings.warn(
+                "plan(..., dt=...) 已弃用；请用 CuroboPlanner(..., interpolation_dt=...) 设置插值步长。",
+                UserWarning,
+                stacklevel=2,
+            )
+        legacy = kwargs.pop("legacy_tuple_return", False)
+        out = self.plan_dual(start_joint_positions, goal_poses, **kwargs)
+        if legacy:
+            ok = out["status"] == "Success"
+            traj = out["position"] if ok else np.array([])
+            return ok, traj
+        return out
+
     def plan_single_arm(
         self,
         start_joint_positions: np.ndarray,
         goal_pose: Dict[str, np.ndarray],
-        arm: str = 'left',
-        dt: float = 0.05,
-    ) -> Tuple[bool, np.ndarray]:
+        arm: str,
+        fixed_arm_goal_pose: Dict[str, np.ndarray],
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """
-        单臂运动规划（当只需要移动一个手臂时使用）
-        
+        只驱动一侧手臂时：调用方提供 **完整 14 维起始关节**，以及 **固定侧末端目标位姿**
+        （通常来自仿真当前 FK / body_state），避免在封装内做 FK。
+
         参数:
-            start_joint_positions: (7,) 起始关节位置（指定手臂的7个关节）
-            goal_pose: 目标位姿 {'position': (3,), 'quaternion': (4,)}（机器人坐标系）
-            arm: 'left' 或 'right'，用于确定末端执行器
-            dt: 插值轨迹时间步长
-        
-        返回:
-            success: 是否规划成功
-            trajectory: (T, 7) 关节位置轨迹
+            start_joint_positions: (14,)
+            goal_pose: 移动臂 ``{'position':(3,), 'quaternion':(4,)}``
+            arm: ``'left'`` 或 ``'right'``
+            fixed_arm_goal_pose: 另一侧末端目标（与 ``goal_pose`` 相同结构）
         """
-        assert start_joint_positions.shape == (7,), f"Expected (7,) start joints, got {start_joint_positions.shape}"
-        
-        # 注意：对于单臂规划，我们仍然需要构造完整的14维输入
-        # curobo是为整个机器人规划，所以需要填充另一个手臂的关节
-        # 用户只需要提供规划手臂的关节，另一个手臂保持当前固定
-        
-        # 获取当前完整机器人的起始状态需要用户提供全部14个关节
-        # 所以这里我们要求如果用户调用此方法，另一个手臂保持不动，我们会保持其起始关节不变
-        # 如果用户需要另一个手臂移动，请使用 plan() 方法
-        
-        # 实际上，当我们只给一个末端设置目标时，cuRobo仍然会规划整个机器人
-        # 另一个末端会保持在起始位置附近
-        
-        # 转换为cuRobo位姿
-        pos = goal_pose['position']
-        quat = goal_pose['quaternion']
-        pos_curobo, quat_curobo = self._transform_pose(pos, quat)
-        
-        # 对于单臂，我们只设置对应末端的目标，另一个末端保持原位
-        # 但实际上，我们需要两个末端目标，所以另一个末端通过FK从起始关节计算
-        
-        # 这里简化处理：我们让用户提供完整的14维起始关节，指明哪个臂要移动
-        # 如果用户只提供7维，我们假设另一个手臂保持在0位置？不对，用户需要提供完整起始
-        # 让我重新设计API...
-        
-        raise NotImplementedError(
-            "For single arm planning, please use the full plan() API with "
-            "both arms start joints and both arms goal poses. The other arm "
-            "can just keep its goal pose the same as start pose."
-        )
-    
+        arm = arm.lower()
+        if arm not in ("left", "right"):
+            raise ValueError("arm 必须为 'left' 或 'right'")
+        other = "right" if arm == "left" else "left"
+        goal_poses = {
+            arm: {
+                "position": np.asarray(goal_pose["position"], dtype=np.float64),
+                "quaternion": np.asarray(goal_pose["quaternion"], dtype=np.float64),
+            },
+            other: {
+                "position": np.asarray(fixed_arm_goal_pose["position"], dtype=np.float64),
+                "quaternion": np.asarray(fixed_arm_goal_pose["quaternion"], dtype=np.float64),
+            },
+        }
+        return self.plan_dual(start_joint_positions, goal_poses, **kwargs)
+
     def get_interpolated_trajectory(self) -> Optional[np.ndarray]:
-        """
-        获取最近一次规划的插值轨迹
-        
-        返回:
-            trajectory: (T, n_dof) 插值后的关节轨迹，如果没有规划则返回None
-        """
-        if self.last_result is None:
-            return None
-        
-        if not self.last_result.success.any():
-            return None
-        
-        interpolated = self.last_result.get_interpolated_plan()
-        return interpolated.position.cpu().numpy()
-    
+        if self.last_plan_dict is not None and self.last_plan_dict["status"] == "Success":
+            return self.last_plan_dict["position"]
+        return None
+
     def get_optimized_trajectory(self) -> Optional[np.ndarray]:
-        """
-        获取最近一次规划的优化轨迹（未插值）
-        
-        返回:
-            trajectory: (T, n_dof) 优化后的关节轨迹，如果没有规划则返回None
-        """
         if self.last_result is None:
             return None
-        
-        if not self.last_result.success.any():
+        try:
+            if not self.last_result.success[0].item():
+                return None
+        except Exception:
             return None
-        
-        return self.last_result.optimized_plan.position.cpu().numpy()
-    
+        op = getattr(self.last_result, "optimized_plan", None)
+        if op is None:
+            return None
+        pos = op.position
+        if isinstance(pos, torch.Tensor) and pos.dim() == 3:
+            pos = pos[0]
+        return pos.detach().float().cpu().numpy()
+
     def is_success(self) -> bool:
-        """
-        检查最近一次规划是否成功
-        
-        返回:
-            是否成功
-        """
-        if self.last_result is None:
-            return False
-        
-        return self.last_result.success[0].item()
-    
+        return self.last_plan_dict is not None and self.last_plan_dict.get("status") == "Success"
+
     @property
     def solve_time(self) -> Optional[float]:
-        """
-        获取最近一次规划的求解时间（毫秒）
-        
-        返回:
-            求解时间，如果没有规划则返回None
-        """
         if self.last_result is None:
             return None
-        
-        return self.last_result.solve_time.item() * 1000
+        st = getattr(self.last_result, "solve_time", None)
+        if st is None:
+            return None
+        if isinstance(st, torch.Tensor):
+            return float(st.flatten()[0].item()) * 1000.0
+        return float(st) * 1000.0
