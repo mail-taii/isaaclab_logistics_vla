@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import time
-from pathlib import Path
 from typing import Dict, Optional, Sequence, Union
 
 import torch
@@ -14,21 +13,9 @@ from isaaclab_logistics_vla.evaluation.robot_registry import RobotEvalConfig
 from isaaclab.utils.math import combine_frame_transforms
 from isaaclab_logistics_vla.evaluation.curobo.planner import (
     WorldMode,
-    build_motion_gen,
-    plan_single_ee_motion,
+    CuroboPlanner,
 )
 
-# Curobo imports
-try:
-    from curobo.geom.types import WorldConfig, Cuboid
-    from curobo.geom.sdf.world import CollisionCheckerType
-    from curobo.types.base import TensorDeviceType
-    from curobo.types.robot import RobotConfig, JointState
-    from curobo.util_file import load_yaml
-    from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
-    from curobo.types.math import Pose
-except ImportError:
-    print("Curobo not installed or configured properly.")
 
 class CuroboReachBoxPolicy(Policy):
     def __init__(
@@ -59,7 +46,7 @@ class CuroboReachBoxPolicy(Policy):
             else (os.environ.get("CUROBO_USE_MESH_OBSTACLES", "").lower() in ("1", "true", "yes"))
         )
 
-        self._motion_gen = None
+        self._curobo_planner: Optional[CuroboPlanner] = None
         self._trajectory: Optional[torch.Tensor] = None
         self._step_counter = 0
         self._platform_joint_index = platform_joint_index
@@ -105,7 +92,7 @@ class CuroboReachBoxPolicy(Policy):
 
         actions = torch.zeros((num_envs, self._action_dim), device=self._device)
 
-        if self._trajectory is None and qpos is not None and self._motion_gen is not None:
+        if self._trajectory is None and qpos is not None and self._curobo_planner is not None:
             q_start = qpos[0].detach().clone()
             arm_base_pos = None
             arm_base_quat = None
@@ -161,7 +148,7 @@ class CuroboReachBoxPolicy(Policy):
             else:
                 world_mode = "boxes_cuboid"
 
-            self._motion_gen = build_motion_gen(
+            self._curobo_planner = CuroboPlanner(
                 self._robot_eval_cfg,
                 curobo_device=self._curobo_device,
                 world_mode=world_mode,
@@ -222,21 +209,21 @@ class CuroboReachBoxPolicy(Policy):
             target_local_np, device=self._curobo_device, dtype=torch.float32
         )
 
-        result = None
+        plan_result: Optional[dict] = None
         t_plan_start = time.perf_counter()
         for r, p, y in self.GRASP_POSE_CANDIDATES:
             _qw, _qx, _qy, _qz = euler_to_quat_isaac(r=r, p=p, y=y, return_tensor=False)
             target_quat_vec = torch.tensor(
                 [_qw, _qx, _qy, _qz], device=self._curobo_device, dtype=torch.float32
             )
-            # 诊断：传给 MotionGen 的最终数值（仅第一次姿态打印）
+            # 诊断：传给规划器的最终数值（仅第一次姿态打印）
             if (r, p, y) == self.GRASP_POSE_CANDIDATES[0]:
                 _pos = target_pos_vec.detach().cpu().tolist()
                 _quat = target_quat_vec.detach().cpu().tolist()
-                print(f"[{self.name}] 传给 MotionGen 的 goal_pose: pos={_pos}, quat(wxyz)={_quat}")
+                print(f"[{self.name}] 传给 CuroboPlanner 的 goal_pose: pos={_pos}, quat(wxyz)={_quat}")
             t_single = time.perf_counter()
-            result = plan_single_ee_motion(
-                self._motion_gen,
+            assert self._curobo_planner is not None
+            plan_result = self._curobo_planner.plan_ee(
                 q_start=q_start_left,
                 target_pos_b=target_pos_vec,
                 target_quat_b=target_quat_vec,
@@ -246,21 +233,23 @@ class CuroboReachBoxPolicy(Policy):
                 enable_opt=False,
             )
             elapsed = (time.perf_counter() - t_single) * 1000
-            if result.success.item():
+            if plan_result["status"] == "Success":
                 total_ms = (time.perf_counter() - t_plan_start) * 1000
                 print(f"[{self.name}] 使用姿态 (r={r}, p={p}, y={y})° 规划成功 | 本次: {elapsed:.0f}ms | 累计: {total_ms:.0f}ms")
                 break
             else:
-                print(f"[{self.name}] 姿态 (r={r}, p={p}, y={y})° 失败 {result.status} | {elapsed:.0f}ms")
+                detail = plan_result.get("detail", "?")
+                print(f"[{self.name}] 姿态 (r={r}, p={p}, y={y})° 失败 {detail} | {elapsed:.0f}ms")
 
         # 5. 处理结果
         traj = torch.zeros((self._horizon, self._action_dim), device=self._device)
         base_q = q_start.detach().clone()
 
-        if result.success.item():
-            print(f"[{self.name}] ✅ MotionGen 规划成功! 路径点数: {result.interpolated_plan.position.shape}")
-            
-            raw_path = result.interpolated_plan.position.squeeze(0).to(self._device)  # 回传到 policy 设备
+        if plan_result is not None and plan_result["status"] == "Success" and plan_result["position"] is not None:
+            pos_np = plan_result["position"]
+            print(f"[{self.name}] ✅ CuroboPlanner 规划成功! 路径点数: {pos_np.shape[0]}")
+
+            raw_path = torch.from_numpy(pos_np).to(self._device)
             raw_steps = raw_path.shape[0]
             
             # 重采样
@@ -283,7 +272,8 @@ class CuroboReachBoxPolicy(Policy):
                 
         else:
             total_ms = (time.perf_counter() - t_plan_start) * 1000
-            print(f"[{self.name}] ❌ MotionGen 规划失败: {result.status} | 总耗时: {total_ms:.0f}ms")
+            detail = plan_result.get("detail", "?") if plan_result else "no_result"
+            print(f"[{self.name}] ❌ CuroboPlanner 规划失败: {detail} | 总耗时: {total_ms:.0f}ms")
             # 失败保持不动
             for t in range(self._horizon):
                 traj[t] = base_q[:self._action_dim]

@@ -17,14 +17,11 @@ from isaaclab.utils.math import subtract_frame_transforms, combine_frame_transfo
 from isaaclab_logistics_vla.evaluation.observation.builder import EpisodeContext, ObservationBuilder
 from isaaclab_logistics_vla.evaluation.observation.schema import ObservationRequire
 from isaaclab_logistics_vla.evaluation.robot_registry import get_robot_eval_config
-# Curobo MotionGen 规划器（EE 模式用，配置从本包 configs/robot_configs/ 加载）
-from curobo.wrap.reacher.motion_gen import MotionGenPlanConfig
 
 import isaaclab_logistics_vla
 from isaaclab_logistics_vla.evaluation.curobo.planner import (
     WorldMode,
-    build_motion_gen,
-    plan_single_ee_motion,
+    CuroboPlanner,
 )
 
 
@@ -162,7 +159,7 @@ class VLA_Evaluator:
         self.video_output_dir.mkdir(parents=True, exist_ok=True)
         self.video_initialized = False
 
-        self._motion_gen = None
+        self._curobo_planner: CuroboPlanner | None = None
         self.arm_dof = self._robot_eval_cfg.arm_dof
 
         if (
@@ -176,17 +173,17 @@ class VLA_Evaluator:
                 if use_mesh and use_hollow_box:
                     world_mode: WorldMode = "boxes_hollow"
                     print(
-                        f"🔄 初始化 Curobo MotionGen 规划器 (robot_id={robot_id})，障碍物: 空心箱..."
+                        f"🔄 初始化 CuroboPlanner (robot_id={robot_id})，障碍物: 空心箱..."
                     )
                 elif use_mesh:
                     world_mode = "boxes_mesh"
                     print(
-                        f"🔄 初始化 Curobo MotionGen 规划器 (robot_id={robot_id})，障碍物: 箱子(mesh)..."
+                        f"🔄 初始化 CuroboPlanner (robot_id={robot_id})，障碍物: 箱子(mesh)..."
                     )
                 else:
                     world_mode = "table_only"
                     print(
-                        f"🔄 初始化 Curobo MotionGen 规划器 (robot_id={robot_id})，障碍物: 仅桌子..."
+                        f"🔄 初始化 CuroboPlanner (robot_id={robot_id})，障碍物: 仅桌子..."
                     )
 
                 # 与 policy 的 Curobo 使用同一 GPU，避免 retract_config 等张量跨设备
@@ -200,15 +197,15 @@ class VLA_Evaluator:
                 else:
                     _curobo_dev = self.env.device
 
-                self._motion_gen = build_motion_gen(
+                self._curobo_planner = CuroboPlanner(
                     self._robot_eval_cfg,
                     curobo_device=_curobo_dev,
                     world_mode=world_mode,
                     logger_name=f"evaluator_curobo_{robot_id}",
                 )
             except Exception as e:
-                print(f"❌ Curobo MotionGen 初始化失败: {e}")
-                self._motion_gen = None
+                print(f"❌ CuroboPlanner 初始化失败: {e}")
+                self._curobo_planner = None
         else:
             print(
                 f"[INFO] robot_id={robot_id} 未配置 Curobo（curobo_yml_name/asset/urdf 为空），EE 模式不可用。"
@@ -321,10 +318,10 @@ class VLA_Evaluator:
         control_mode = getattr(self.policy, "control_mode", "joint")
         
         if control_mode == "ee":
-            # EE 模式必须要有 MotionGen 规划器，否则报错
-            if not self._motion_gen:
+            # EE 模式必须要有 CuroboPlanner，否则报错
+            if self._curobo_planner is None:
                 raise RuntimeError(
-                    "EE 模式下 Curobo MotionGen 未初始化成功，无法将末端动作转为关节动作。"
+                    "EE 模式下 CuroboPlanner 未初始化成功，无法将末端动作转为关节动作。"
                     " 请检查 configs/robot_configs/ 与 Curobo 依赖。"
                 )
 
@@ -419,8 +416,7 @@ class VLA_Evaluator:
                     arm_qpos = current_qpos[:, left_arm_indices].detach().clone()
                     q_start_left = arm_qpos[0]
 
-                    result = plan_single_ee_motion(
-                        self._motion_gen,
+                    result = self._curobo_planner.plan_ee(
                         q_start=q_start_left,
                         target_pos_b=target_ee_pos[0],
                         target_quat_b=ee_quat_for_pose[0],
@@ -430,25 +426,22 @@ class VLA_Evaluator:
                         enable_opt=False,
                     )
 
-                    if result.success.item():
+                    if result["status"] == "Success" and result["position"] is not None:
                         # 取规划轨迹的最后一个点（目标关节角）作为本步动作
-                        raw_plan = result.interpolated_plan.position
-                        if raw_plan.dim() == 3:
-                            sol_left = raw_plan[0, -1, :].detach()
-                        else:
-                            sol_left = raw_plan[-1].detach()
+                        raw_plan_np = result["position"]
+                        sol_left = torch.from_numpy(raw_plan_np[-1]).to(
+                            device=actions.device, dtype=actions.dtype
+                        )
                         new_actions = actions.clone()
                         for i, idx in enumerate(left_arm_indices):
                             if idx < new_actions.shape[1]:
-                                new_actions[:, idx] = sol_left[i].to(actions.device)
-                        print("[MotionGen] 规划成功，已应用目标关节角")
+                                new_actions[:, idx] = sol_left[i]
+                        print("[CuroboPlanner] 规划成功，已应用目标关节角")
                         return new_actions
-                        raise RuntimeError(
-                            f"MotionGen 成功但 action 维度不足: new_actions.shape[1]={new_actions.shape[1]}, arm_dof={self.arm_dof}"
-                        )
 
                     # 规划失败：跳过本步，保持当前关节角
-                    print(f"[MotionGen] 规划失败 (status={result.status})，跳过本步，保持当前关节角")
+                    detail = result.get("detail", "?")
+                    print(f"[CuroboPlanner] 规划失败 (detail={detail})，跳过本步，保持当前关节角")
                     new_actions = actions.clone()
                     for i, idx in enumerate(left_arm_indices):
                         if idx < new_actions.shape[1]:

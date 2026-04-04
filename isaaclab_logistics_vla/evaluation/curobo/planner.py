@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal, Optional, Tuple
+from typing import Any, Literal, Optional, Tuple, Union
 
+import numpy as np
 import torch
 
 import isaaclab_logistics_vla
@@ -231,4 +232,105 @@ def plan_single_ee_motion(
         enable_opt=enable_opt,
     )
     return motion_gen.plan_single(start_state, goal_pose, plan_cfg)
+
+
+def motion_gen_result_to_plan_dict(result: Any) -> dict[str, Any]:
+    """将 CuRobo MotionGen 的 plan 输出转为与 RoboTwin CuroboPlanner 风格一致的字典（CPU numpy）。
+
+    Keys:
+        - status: \"Success\" | \"Fail\"
+        - position: 成功时为 shape (T, dof) 的 float32 ndarray，失败时为 None
+        - velocity: 成功且存在时为 shape (T, dof) 的 float32 ndarray，否则为 None
+        - detail: 可选，失败时的状态说明（若上游提供）
+    """
+    out: dict[str, Any] = {"status": "Fail", "position": None, "velocity": None}
+    if result is None:
+        return out
+    try:
+        ok = bool(result.success.item())
+    except Exception:
+        ok = bool(result.success)
+    if hasattr(result, "status"):
+        out["detail"] = str(result.status)
+    if not ok:
+        return out
+    pos = result.interpolated_plan.position
+    pos_np = pos.detach().float().cpu().numpy()
+    if pos_np.ndim == 3:
+        pos_np = pos_np[0]
+    vel_np = None
+    vel = getattr(result.interpolated_plan, "velocity", None)
+    if vel is not None:
+        vel_np = vel.detach().float().cpu().numpy()
+        if vel_np.ndim == 3:
+            vel_np = vel_np[0]
+    out["status"] = "Success"
+    out["position"] = np.asarray(pos_np, dtype=np.float32)
+    out["velocity"] = np.asarray(vel_np, dtype=np.float32) if vel_np is not None else None
+    return out
+
+
+class CuroboPlanner:
+    """参考 RoboTwin：对外只暴露规划接口与 numpy 结果，隐藏 MotionGen / CuRobo 类型。
+
+    典型用法：在评估器或策略中 ``CuroboPlanner(...)`` 后反复调用 ``plan_ee()``。
+    """
+
+    def __init__(
+        self,
+        robot_eval_cfg: RobotEvalConfig,
+        curobo_device: Union[torch.device, str],
+        world_mode: WorldMode,
+        logger_name: str = "curobo_planner",
+    ):
+        if MotionGen is None:
+            raise RuntimeError("Curobo 未安装或导入失败，无法构建 CuroboPlanner。")
+        dev = torch.device(curobo_device) if isinstance(curobo_device, str) else curobo_device
+        self._curobo_device = dev
+        self._robot_eval_cfg = robot_eval_cfg
+        self._world_mode = world_mode
+        self._logger_name = logger_name
+        self._motion_gen = build_motion_gen(
+            robot_eval_cfg,
+            curobo_device=dev,
+            world_mode=world_mode,
+            logger_name=logger_name,
+        )
+
+    @property
+    def motion_gen(self) -> "MotionGen":
+        """底层 MotionGen（仅供高级调试；业务代码应优先用 ``plan_ee``）。"""
+        return self._motion_gen
+
+    @property
+    def curobo_device(self) -> torch.device:
+        return self._curobo_device
+
+    def reset(self, reset_seed: bool = True) -> None:
+        """与 RoboTwin 子进程 reset 语义对齐：重置规划器内部状态。"""
+        if self._motion_gen is not None and hasattr(self._motion_gen, "reset"):
+            self._motion_gen.reset(reset_seed=reset_seed)
+
+    def plan_ee(
+        self,
+        q_start: torch.Tensor,
+        target_pos_b: torch.Tensor,
+        target_quat_b: torch.Tensor,
+        max_attempts: int = 10,
+        timeout: float = 2.0,
+        enable_graph: bool = True,
+        enable_opt: bool = False,
+    ) -> dict[str, Any]:
+        """臂基系下末端位姿规划：输入当前关节与目标 pos/quat，返回 Success/Fail + 轨迹 numpy。"""
+        raw = plan_single_ee_motion(
+            self._motion_gen,
+            q_start=q_start,
+            target_pos_b=target_pos_b,
+            target_quat_b=target_quat_b,
+            max_attempts=max_attempts,
+            timeout=timeout,
+            enable_graph=enable_graph,
+            enable_opt=enable_opt,
+        )
+        return motion_gen_result_to_plan_dict(raw)
 
