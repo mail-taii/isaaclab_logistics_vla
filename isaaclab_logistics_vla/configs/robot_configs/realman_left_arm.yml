@@ -1,0 +1,150 @@
+# Curobo 左臂 MotionGen 标准配置
+# collision_spheres 为 MotionGen 规划梯度计算所必需；路径由代码运行时注入
+#
+# 臂基偏移（双臂人形）：CuRobo base_link = platform_base_link。相对机器人根 link 的平移
+# 在 robot_registry.arm_base_offset_in_root：(0, -0.11663, 0.271) + [0,0,platform_joint]。
+robot_cfg:
+  kinematics:
+    use_usd_kinematics: false
+    urdf_path: PLACEHOLDER_URDF
+    asset_root_path: PLACEHOLDER_ASSET_ROOT
+    base_link: dual_rm_75b_description_platform_base_link
+    ee_link: l_link7
+    # 锁定夹爪关节：collision_link_names 含 panda_left_*finger 时运动链会延伸至 left_*_joint，
+    # 必须锁定以从 cspace 中排除，否则 inplace_reindex 报错 'left_left_joint' is not in list
+    lock_joints:
+      left_left_joint: 0.0
+      left_right_joint: 0.0
+    collision_spheres: spheres/realman_left_arm.yml
+    collision_sphere_buffer: 0.002
+    # collision_link_names 必须与 spheres/realman_left_arm.yml 中的键一致，右臂无球体定义故不包含
+    collision_link_names:
+    - dual_rm_75b_description_platform_base_link
+    - dual_rm_75b_description_l_link1
+    - dual_rm_75b_description_l_link2
+    - dual_rm_75b_description_l_link3
+    - dual_rm_75b_description_l_link4
+    - dual_rm_75b_description_l_link5
+    - dual_rm_75b_description_l_link6
+    - l_link7
+    - panda_left_hand
+    - panda_left_leftfinger
+    - panda_left_rightfinger
+    mesh_link_names:
+    - dual_rm_75b_description_platform_base_link
+    - dual_rm_75b_description_l_link1
+    - dual_rm_75b_description_l_link2
+    - dual_rm_75b_description_l_link3
+    - dual_rm_75b_description_l_link4
+    - dual_rm_75b_description_l_link5
+    - dual_rm_75b_description_l_link6
+    - l_link7
+    - panda_left_hand
+    - panda_left_leftfinger
+    - panda_left_rightfinger
+    # 放宽自碰撞屏蔽：相邻及隔一 link 均忽略，避免零位误判
+    self_collision_ignore:
+      dual_rm_75b_description_platform_base_link:
+      - dual_rm_75b_description_l_link1
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link3
+      dual_rm_75b_description_l_link1:
+      - dual_rm_75b_description_platform_base_link
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link4
+      dual_rm_75b_description_l_link2:
+      - dual_rm_75b_description_platform_base_link
+      - dual_rm_75b_description_l_link1
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      dual_rm_75b_description_l_link3:
+      - dual_rm_75b_description_l_link1
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      dual_rm_75b_description_l_link4:
+      - dual_rm_75b_description_l_link2
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      - l_link7
+      dual_rm_75b_description_l_link5:
+      - dual_rm_75b_description_l_link3
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link6
+      - l_link7
+      - panda_left_hand
+      dual_rm_75b_description_l_link6:
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      - l_link7
+      - panda_left_hand
+      l_link7:
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      - panda_left_hand
+      panda_left_hand:
+      - dual_rm_75b_description_l_link4
+      - dual_rm_75b_description_l_link5
+      - dual_rm_75b_description_l_link6
+      - l_link7
+      - panda_left_leftfinger
+      - panda_left_rightfinger
+      panda_left_leftfinger:
+      - panda_left_hand
+      - panda_left_rightfinger
+      panda_left_rightfinger:
+      - panda_left_hand
+      - panda_left_leftfinger
+    # 减小 buffer 避免零位被误判为自碰撞 (原 0.1/0.05 → 0)
+    self_collision_buffer:
+      dual_rm_75b_description_platform_base_link: 0.0
+      dual_rm_75b_description_l_link1: 0.0
+      dual_rm_75b_description_l_link2: 0.0
+      dual_rm_75b_description_l_link3: 0.0
+      dual_rm_75b_description_l_link4: 0.0
+      dual_rm_75b_description_l_link5: 0.0
+      dual_rm_75b_description_l_link6: 0.0
+      l_link7: 0.0
+      panda_left_hand: 0.0
+      panda_left_leftfinger: 0.0
+      panda_left_rightfinger: 0.0
+    cspace:
+      joint_names:
+      - l_joint1
+      - l_joint2
+      - l_joint3
+      - l_joint4
+      - l_joint5
+      - l_joint6
+      - l_joint7
+      retract_config:
+      - 3.1
+      - 0.3
+      - 0.8
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      null_space_weight:
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      cspace_distance_weight:
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      - 1.0
+      max_acceleration: 15.0
+      max_jerk: 500.0
