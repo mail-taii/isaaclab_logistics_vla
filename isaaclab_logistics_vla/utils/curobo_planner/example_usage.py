@@ -1,25 +1,37 @@
 """
 cuRobo 运动规划器使用示例（RoboTwin 风格：结果 dict + numpy）。
 
+运行前须已生成 kinematics YAML，例如::
+
+    python scripts/generate_curobo_robot_kinematics_yaml.py \\
+        --urdf /path/to/robot.urdf \\
+        --output ~/.cache/curobo_realman/realman_config_v2.yaml
+
 运行（需在安装 curobo 与 GPU 环境下）::
 
     python -m isaaclab_logistics_vla.utils.curobo_planner.example_usage
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from isaaclab_logistics_vla.utils.curobo_planner import CuroboPlanner
+
+# 与 CuroboPlanner(use_curobo_cache=True) 默认路径一致；可改为你的 YAML。
+_EXAMPLE_KIN_YAML = os.path.expanduser("~/.cache/curobo_realman/realman_config_v2.yaml")
 
 
 def example_basic_planning() -> tuple[bool, np.ndarray | None]:
     print("=== Basic cuRobo Planning Example (dict API) ===\n")
 
     print("Initializing CuroboPlanner...")
+    # 默认 apply_robot_to_curobo_frame_transform=True：目标/障碍会绕 z 再转 -90°；若 URDF 已与 cuRobo 同轴请设 False。
     planner = CuroboPlanner(
-        urdf_path="/home/junzhe/Benchmark/robot/realman/realman_franka_ee.urdf",
         device="cuda:0",
         interpolation_dt=0.05,
+        cache_path=_EXAMPLE_KIN_YAML,
     )
     print("Initialization complete!\n")
 
@@ -59,6 +71,9 @@ def example_basic_planning() -> tuple[bool, np.ndarray | None]:
         ],
         dtype=np.float32,
     )
+    assert start_joints.shape[0] == planner.dof, (
+        f"示例关节维数 {start_joints.shape[0]} 与 planner.dof={planner.dof} 不符，请换 YAML 或改 start_joints"
+    )
 
     goal_poses = {
         "left": {
@@ -91,7 +106,7 @@ def example_basic_planning() -> tuple[bool, np.ndarray | None]:
 def example_empty_world() -> None:
     print("\n=== Empty World Planning Example ===\n")
 
-    planner = CuroboPlanner(interpolation_dt=0.05)
+    planner = CuroboPlanner(interpolation_dt=0.05, cache_path=_EXAMPLE_KIN_YAML)
     planner.clear_world()
 
     start_joints = np.array(
@@ -113,6 +128,8 @@ def example_empty_world() -> None:
         ],
         dtype=np.float32,
     )
+    assert start_joints.shape[0] == planner.dof
+
     goal_poses = {
         "left": {
             "position": np.array([-0.3, 0.6, 0.4]),
@@ -132,9 +149,9 @@ def example_empty_world() -> None:
 
 def example_legacy_tuple() -> None:
     """旧代码 ``success, traj = planner.plan(..., legacy_tuple_return=True)``。"""
-    planner = CuroboPlanner()
+    planner = CuroboPlanner(cache_path=_EXAMPLE_KIN_YAML)
     planner.clear_world()
-    start_joints = np.zeros(14, dtype=np.float32)
+    start_joints = np.zeros(planner.dof, dtype=np.float32)
     goal_poses = {
         "left": {"position": np.array([0.0, 0.4, 0.3]), "quaternion": np.array([1.0, 0.0, 0.0, 0.0])},
         "right": {"position": np.array([0.0, 0.4, 0.3]), "quaternion": np.array([1.0, 0.0, 0.0, 0.0])},
@@ -150,12 +167,12 @@ def example_in_benchmark() -> None:
         """
     from isaaclab_logistics_vla.utils.curobo_planner import CuroboPlanner
 
-    planner = CuroboPlanner(device="cuda:0", interpolation_dt=0.05)
+    planner = CuroboPlanner(device="cuda:0", interpolation_dt=0.05, cache_path=".../robot_kin.yaml")
     planner.set_world(obstacles)  # 从仿真构建 cuboid 列表
 
-    out = planner.plan_dual(current_joints_14, goal_poses)
+    out = planner.plan_dual(current_joints, goal_poses)  # current_joints.shape == (planner.dof,)
     if out["status"] == "Success":
-        traj = out["position"]  # (T, 14) float32 numpy
+        traj = out["position"]  # (T, dof) float32 numpy
         # 逐步 env.step 或写回 action buffer
     grip = CuroboPlanner.plan_grippers(0.0, 1.0, num_step=200)
     """

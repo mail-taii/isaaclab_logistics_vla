@@ -1,7 +1,8 @@
 """
 cuRobo 运动规划封装（参照 RoboTwin envs/robot/planner.py 中 CuroboPlanner 的用法）：
 
-- 构造期：加载 RobotConfig、构建 MotionGen、warmup；机器人描述可用 ``RobotSpec``（URDF + 可选 kinematics YAML）或传统 ``urdf_path`` / ``cache_path``。
+- 构造期：从 **已存在的 kinematics YAML**（``RobotConfig.from_dict``）或调用方传入的 ``RobotConfig`` 加载模型，再构建 MotionGen、warmup。
+  URDF → YAML 的生成在仓库 ``scripts/generate_curobo_robot_kinematics_yaml.py``，**不在**本包内执行。
 - 世界：用 ``WorldSpec.from_yaml`` / ``from_cuboids`` 描述长方体障碍，经 ``apply_world`` 更新（空 ``WorldSpec`` 即无障碍）。
 - 规划期：双臂 ``plan_dual`` / ``plan_single_arm`` 返回 **dict + CPU numpy**，不向上层暴露 CuRobo Tensor。
 - 夹爪：``plan_grippers`` 为线性插值，不经 CuRobo。
@@ -17,6 +18,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import yaml
 
 from curobo.geom.sdf.world import CollisionCheckerType
 from curobo.geom.types import Cuboid, WorldConfig
@@ -26,10 +28,23 @@ from curobo.types.robot import RobotConfig
 from curobo.types.state import JointState
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 
-from .config_generator import load_realman_config
 from .result_utils import motion_gen_batch_result_to_plan_dict, plan_grippers_linear
 from .robot_spec import RobotSpec
 from .world_spec import WorldSpec
+
+
+def _load_robot_config_yaml(path: str, tensor_args: TensorDeviceType) -> RobotConfig:
+    """从 YAML 加载 ``RobotConfig``；文件须已存在（由仓库脚本或等价流程生成）。"""
+    expanded = os.path.expanduser(path)
+    if not os.path.isfile(expanded):
+        raise FileNotFoundError(
+            f"未找到 kinematics YAML: {expanded}\n"
+            "请运行仓库 scripts/generate_curobo_robot_kinematics_yaml.py 从 URDF 生成，"
+            "或在构造 CuroboPlanner 时传入 robot_config=...（curobo.types.robot.RobotConfig）。"
+        )
+    with open(expanded, "r", encoding="utf-8") as f:
+        config_dict = yaml.safe_load(f)
+    return RobotConfig.from_dict(config_dict, tensor_args)
 
 
 def _infer_robot_dof(kinematics: Any) -> int:
@@ -80,7 +95,7 @@ class CuroboPlanner:
 
     主要 API：
         - ``plan_dual`` / ``plan``：双臂末端目标 → ``{status, position, velocity, ...}``
-        - ``plan_one_ee``：单链单末端（如 7-DOF 臂，构造时传 ``ee_link``）→ 同上 dict，``position`` 为 ``(T, n_dof)``
+        - ``plan_one_ee``：单链单末端（kinematics YAML 为单 ``ee`` 模型，如 7-DOF）→ 同上 dict，``position`` 为 ``(T, n_dof)``
         - ``plan_single_arm``：单臂移动，另一臂目标位姿由调用方给出（通常取当前末端位姿）
         - ``apply_world`` / ``set_world`` / ``clear_world``：障碍更新（推荐 ``WorldSpec`` + ``apply_world``）
         - ``plan_grippers``：夹爪插值 dict
@@ -94,7 +109,6 @@ class CuroboPlanner:
 
     def __init__(
         self,
-        urdf_path: Optional[str] = None,
         device: str = "cuda:0",
         use_curobo_cache: bool = True,
         cache_path: Optional[str] = None,
@@ -102,43 +116,37 @@ class CuroboPlanner:
         apply_robot_to_curobo_frame_transform: bool = True,
         use_cuda_graph: bool = False,
         robot_spec: Optional[RobotSpec] = None,
-        *,
-        # 若直接构造单臂，用 robot_spec 或 ee_link 参数：
-        ee_link: Optional[str] = None,
+        robot_config: Optional[RobotConfig] = None,
     ):
         self.device = device
         self.tensor_args = TensorDeviceType(device=device)
         self.apply_frame_transform = apply_robot_to_curobo_frame_transform
         self.interpolation_dt = interpolation_dt
 
-        if robot_spec is not None:
-            eff_urdf = robot_spec.urdf_path
-            eff_cache = robot_spec.cache_path if robot_spec.cache_path is not None else cache_path
-            load_kw: Dict[str, Any] = {
-                "base_link": robot_spec.base_link,
-                "left_ee_link": robot_spec.left_ee_link,
-                "right_ee_link": robot_spec.right_ee_link,
-            }
-        else:
-            eff_urdf = urdf_path or "/home/junzhe/Benchmark/robot/realman/realman_franka_ee.urdf"
-            eff_cache = cache_path
-            load_kw = {}
-
-        if eff_cache is None and use_curobo_cache:
-            cache_dir = os.path.expanduser("~/.cache/curobo_realman")
-            os.makedirs(cache_dir, exist_ok=True)
-            # v2: 与 realman_franka_ee.urdf 的 panda_*_hand 末端命名一致（旧缓存含 left_ee 会 KeyError）
-            eff_cache = os.path.join(cache_dir, "realman_config_v2.yaml")
+        eff_cache: Optional[str] = None
+        if robot_config is None:
+            if robot_spec is not None:
+                eff_cache = cache_path if cache_path is not None else robot_spec.cache_path
+            else:
+                eff_cache = cache_path
+            if eff_cache is None and use_curobo_cache:
+                cache_dir = os.path.expanduser("~/.cache/curobo_realman")
+                os.makedirs(cache_dir, exist_ok=True)
+                # v2: 与常见 Realman+panda_hand URDF 末端命名一致（旧缓存含 left_ee 会 KeyError）
+                eff_cache = os.path.join(cache_dir, "realman_config_v2.yaml")
+            if eff_cache is None:
+                raise ValueError(
+                    "须提供 robot_config、cache_path / RobotSpec.cache_path，"
+                    "或将 use_curobo_cache=True 以使用默认 ~/.cache/curobo_realman/realman_config_v2.yaml（须已预生成）。"
+                )
 
         # 整块放入非 inference 上下文，避免内部缓冲区成为 inference tensor 且与 warmup/plan 冲突
         with _curobo_autograd_context():
-            self.robot_config = load_realman_config(
-                urdf_path=eff_urdf,
-                cache_path=eff_cache,
-                device=device,
-                ee_link=ee_link,
-                **load_kw,
-            )
+            if robot_config is not None:
+                self.robot_config = robot_config
+            else:
+                assert eff_cache is not None
+                self.robot_config = _load_robot_config_yaml(eff_cache, self.tensor_args)
             # world_model 不可为 None：否则 cuRobo 不会创建 world_coll_checker，后续 update_world 会崩。
             self.motion_gen_config = MotionGenConfig.load_from_robot_config(
                 self.robot_config,
@@ -344,7 +352,7 @@ class CuroboPlanner:
         enable_opt: bool = True,
     ) -> dict[str, Any]:
         """
-        单末端运动规划：适用于 ``link_names`` 仅含一个末端的配置（通常构造时传入 ``ee_link``，``self.dof`` 为 7 等）。
+        单末端运动规划：适用于 kinematics 中 ``link_names`` 仅含一个末端的配置（由加载的 YAML / ``robot_config`` 决定，``self.dof`` 常为 7）。
 
         参数:
             start_joint_positions: ``(self.dof,)``
