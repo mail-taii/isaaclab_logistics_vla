@@ -1,31 +1,6 @@
 # Copyright (c) 2025, Logistics VLA extension contributors.
 # SPDX-License-Identifier: BSD-3-Clause
-"""
-在真实 Isaac Lab 任务场景中使用 ``utils.curobo_planner.CuroboPlanner`` 的示例策略。
 
-典型启动（仓库根目录，需已配置 ``ASSET_ROOT_PATH`` 等）::
-
-    ./isaaclab.sh -p /path/to/isaaclab_logistics_vla/scripts/evaluate_vla.py \\
-        --policy curobo_plan --task_scene_name Spawn_ms_st_dense_EnvCfg --num_envs 1
-
-说明:
-    - 默认仅对 **env 0** 做规划，并将同一关节目标广播到所有并行环境（便于多 env 可视化）。
-    - **默认 ``goal_mode='reach_box'``**：世界系 ``target_box_world_pos``，臂基世界位置 **纯减法**
-      得到臂基系目标点；朝向用 ``grasp_pose_candidates_deg`` 多组 (r,p,y) 度 + ``euler_to_quat_isaac``
-      依次尝试；``CuroboPlanner.plan_single_arm`` 只动 ``reach_arm``，对侧保持 **当前末端**（臂基系）。
-      ``goal_mode='hand_delta'`` 时为「当前手位姿 + 增量」双臂 ``plan_dual``。
-    - **臂基世界位姿**：优先 ``robot_registry`` 的 ``arm_base_offset_in_root`` + ``platform_joint`` 与
-      ``combine_frame_transforms``；否则 ``platform_base_link`` / root。
-    - **关节动作顺序**：cuRobo 左 7 + 右 7 → Isaac 交错 l1,r1,… 自动转换。
-    - 可选传入 ``RobotSpec`` / ``WorldSpec``（或 ``WorldSpec.from_yaml``）显式配置机器人与世界障碍；
-      未传 ``WorldSpec`` 时规划前为无障碍（空世界）。
-    - **双规划器**：同时传入 ``left_robot_spec`` + ``right_robot_spec``（与 ``robot_spec`` 互斥）。
-      每个 ``CuroboPlanner`` 以 ``ee_link=spec.left_ee_link`` / ``right_ee_link`` 建 **单链** 模型，需与 URDF 一致（通常各 7 关节）。
-      可选 ``dual_left_base_body_contains`` / ``dual_right_base_body_contains`` 指定左右臂基 link 名子串；省略则两侧目标仍用同一套 ``_resolve_arm_base_world``（与单规划器一致）。
-
-环境变量:
-    - ``CUROBO_PLAN_ROBOT_ID``：注册表 ``robot_id``，默认 ``realman_franka_dual``；设为空或 ``none`` / ``off`` 则不走注册表，仅用 body/root 回退。
-"""
 from __future__ import annotations
 
 import os

@@ -15,11 +15,9 @@ from isaaclab_logistics_vla.utils.constant import *
 @configclass
 class BaseOrderSceneCfg(InteractiveSceneCfg):
     # plane
-    # 默认 GroundPlaneCfg 会绑定 physics_material 并查找子 prim 类型为 Plane；部分 Isaac Sim / grid USD
-    # 无该子节点时 collision_prim_path 为 None → GetPrimAtPath(None) 崩溃，故关闭显式材质绑定。
     plane = AssetBaseCfg(
         prim_path="/World/GroundPlane",
-        spawn=GroundPlaneCfg(physics_material=None),
+        spawn=GroundPlaneCfg(),
     )
 
     # lights
