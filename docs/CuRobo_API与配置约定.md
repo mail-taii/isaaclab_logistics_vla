@@ -4,6 +4,22 @@
 
 ---
 
+## 0. 最小流程：哪些 API「必须调」、哪些是可选
+
+**规划本身**始终通过 **`CuroboPlanner` 实例** 的方法完成（如 **`plan_dual`**、**`plan_single_arm`**、**`plan_one_ee`**、**`apply_world`**）。在此之前需要 **一次** 把运动学装进规划器，任选下面 **一种** 即可（**不要混成多条路径**）：
+
+| 方式 | 典型代码 | 说明 |
+|------|----------|------|
+| **A. 只给 YAML 路径** | `CuroboPlanner(cache_path=".../robot_kin.yaml", device="cuda:0")` | 最简单；可与 **`use_curobo_cache=True`** 使用默认路径（文件须已存在，见 **§2.3**）。 |
+| **B. `RobotSpec`** | `spec = RobotSpec.from_kinematics_yaml(".../robot_kin.yaml", ...)` → `CuroboPlanner(robot_spec=spec, ...)` | `from_kinematics_yaml` / `from_robot_config_yaml` / `from_urdf` 都是 **构造 `RobotSpec` 的工厂**；只有当你想用 dataclass 携带 `urdf_path` 等元数据时才需要。**不是**规划循环里每步都调。 |
+| **C. 内存里的 `RobotConfig`** | `CuroboPlanner(robot_config=..., device="cuda:0")` | 自行用 cuRobo API 建好 `RobotConfig` 时；**跳过**磁盘 YAML。 |
+
+**`RobotSpec` 表（§2.1）里的 `@classmethod`**：仅在采用方式 **B** 时、**创建规划器之前** 调用一次，用来得到 `RobotSpec`；若用方式 **A**，可以完全 **不 import `RobotSpec`**。
+
+**包级导出**（`utils.curobo_planner.__init__`）：除上述类型外，还有 **`motion_gen_batch_result_to_plan_dict`**、**`plan_grippers_linear`**，供自定义封装或测试；日常集成 **不必** 直接调用（`plan_dual` 内部已用前者）。
+
+---
+
 ## 1. 基座与坐标系（必读）
 
 ### 1.1 两个「基座」不要混用
@@ -66,6 +82,8 @@
 
 ## 2. 对外 API：输入与输出
 
+以下各节为 **接口速查**；**从哪一步开始读** 见 **§0**。
+
 ### 2.1 `RobotSpec`（指向已生成的 kinematics YAML）
 
 | 方法 / 字段 | 输入 | 说明 |
@@ -77,6 +95,8 @@
 | 字段 `urdf_path`, `base_link`, `left_ee_link`, `right_ee_link` | — | 可选元数据，供业务侧记录；**不参与**封装内加载。 |
 
 **输出：** 无；作为 **`CuroboPlanner(robot_spec=...)`** 的构造输入。
+
+**与裸 `cache_path` 的关系：** 二者 **二选一**（或 `robot_spec` + 构造时 **`cache_path=` 覆盖** spec 内路径，见 **§2.3**）。不需要 `RobotSpec` 时，可直接 **`CuroboPlanner(cache_path=...)`**，功能等价于只用到本表的 **`cache_path`** 字段。
 
 ---
 
@@ -260,6 +280,8 @@ cuboids:
 
 ## 5. 使用样例
 
+不写 **`RobotSpec`** 时，一行即可挂上运动学：`CuroboPlanner(cache_path="/path/to/robot_kin.yaml", device="cuda:0")`，后面 **`apply_world` / `plan_dual`** 与下例相同。
+
 ### 5.1 最小双臂规划（显式 `RobotSpec` + 空世界）
 
 事先生成 YAML（见 **§3.1**），例如 `robot_kin_cache.yaml`。
@@ -296,7 +318,7 @@ goal = {
 }
 out = planner.plan_dual(q0, goal, max_attempts=24, timeout=5.0)
 if out["status"] == "Success":
-    traj = out["position"]  # (T, 14)
+    traj = out["position"]  # (T, planner.dof)，默认双臂 YAML 时常为 14
 ```
 
 **注意**：上例中 `goal` 的数值仅为演示；**实际必须与你的 `base_link` 坐标系一致**。
@@ -340,7 +362,7 @@ out = planner.plan_single_arm(
 | `utils/curobo_planner/curobo_planner.py` | `CuroboPlanner`、`plan_dual` / `plan_single_arm` / `plan_one_ee` |
 | `utils/curobo_planner/robot_spec.py` | `RobotSpec` |
 | `utils/curobo_planner/world_spec.py` | `WorldSpec` |
-| `utils/curobo_planner/result_utils.py` | 结果 dict |
+| `utils/curobo_planner/result_utils.py` | `motion_gen_batch_result_to_plan_dict`、`plan_grippers_linear`（包内亦从 `__init__` 导出） |
 | `utils/curobo_planner/example_usage.py` | 最小调用示例（需 GPU + cuRobo + 预生成 kinematics YAML） |
 | `scripts/generate_curobo_robot_kinematics_yaml.py` | **包外**：URDF → kinematics YAML |
 
