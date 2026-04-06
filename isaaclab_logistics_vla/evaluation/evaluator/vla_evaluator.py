@@ -6,10 +6,20 @@ import time
 
 
 class VLA_Evaluator:
-    def __init__(self, env_cfg, policy="random", from_json=2, device: str = "cuda:0"):
+    def __init__(
+        self,
+        env_cfg,
+        policy="random",
+        from_json=2,
+        device: str = "cuda:0",
+        robot_id: str | None = None,
+        curobo_plan_kwargs: dict | None = None,
+    ):
         self.from_json = from_json
         self.policy_name = policy
         self.device = device
+        self.robot_id = robot_id
+        self._curobo_plan_kwargs = dict(curobo_plan_kwargs or {})
         self._curobo_plan_policy = None
         
         #---在初始化环境之前，将参数注入配置---
@@ -75,7 +85,11 @@ class VLA_Evaluator:
         if self._curobo_plan_policy is None:
             from isaaclab_logistics_vla.evaluation.models.curobo_plan_policy import CuRoboPlanPolicy
 
-            self._curobo_plan_policy = CuRoboPlanPolicy(device=self.device)
+            self._curobo_plan_policy = CuRoboPlanPolicy(
+                device=self.device,
+                robot_id=self.robot_id,
+                **self._curobo_plan_kwargs,
+            )
         return self._curobo_plan_policy
 
     def generate_action(self, obs):

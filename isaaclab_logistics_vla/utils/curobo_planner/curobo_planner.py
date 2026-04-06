@@ -1,11 +1,12 @@
 """
 cuRobo 运动规划封装（参照 RoboTwin envs/robot/planner.py 中 CuroboPlanner 的用法）：
 
-- 构造期：加载 RobotConfig、构建 MotionGen、warmup、可选世界障碍物。
-- 规划期：双臂 ``plan_dual`` / ``plan`` 返回 **dict + CPU numpy**，不向上层暴露 CuRobo Tensor 类型。
-- 夹爪：``plan_grippers`` 为线性插值，与 RoboTwin 一致，不经 CuRobo。
+- 构造期：加载 RobotConfig、构建 MotionGen、warmup；机器人描述可用 ``RobotSpec``（URDF + 可选 kinematics YAML）或传统 ``urdf_path`` / ``cache_path``。
+- 世界：用 ``WorldSpec.from_yaml`` / ``from_cuboids`` 描述长方体障碍，经 ``apply_world`` 更新（空 ``WorldSpec`` 即无障碍）。
+- 规划期：双臂 ``plan_dual`` / ``plan_single_arm`` 返回 **dict + CPU numpy**，不向上层暴露 CuRobo Tensor。
+- 夹爪：``plan_grippers`` 为线性插值，不经 CuRobo。
 
-坐标：默认将「机器人系 (x 右, y 前, z 上)」下的位姿经绕 z 轴 -90° 对齐到 cuRobo 常用前向 x；若你的资产已与 cuRobo 一致，构造时设 ``apply_robot_to_curobo_frame_transform=False``。
+坐标：默认将「机器人系 (x 右, y 前, z 上)」下的位姿经绕 z 轴 -90° 对齐到 cuRobo 常用前向 x；若资产已与 cuRobo 一致，设 ``apply_robot_to_curobo_frame_transform=False``。
 """
 from __future__ import annotations
 
@@ -27,6 +28,36 @@ from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGen
 
 from .config_generator import load_realman_config
 from .result_utils import motion_gen_batch_result_to_plan_dict, plan_grippers_linear
+from .robot_spec import RobotSpec
+from .world_spec import WorldSpec
+
+
+def _infer_robot_dof(kinematics: Any) -> int:
+    """从 cuRobo kinematics 推断关节数；兼容 ``joint_limits`` 与 ``get_joint_limits()`` 等 API 差异。"""
+    jl = getattr(kinematics, "joint_limits", None)
+    if jl is not None:
+        shp = getattr(jl, "shape", None)
+        if shp is not None and len(shp) > 0:
+            return int(shp[0])
+        try:
+            return int(len(jl))  # type: ignore[arg-type]
+        except TypeError:
+            pass
+    get_lim = getattr(kinematics, "get_joint_limits", None)
+    if callable(get_lim):
+        try:
+            lim = get_lim()
+        except Exception:
+            lim = None
+        if lim is not None:
+            shp = getattr(lim, "shape", None)
+            if shp is not None and len(shp) > 0:
+                return int(shp[0])
+            try:
+                return int(len(lim))  # type: ignore[arg-type]
+            except TypeError:
+                pass
+    return 14
 
 
 @contextmanager
@@ -49,40 +80,64 @@ class CuroboPlanner:
 
     主要 API：
         - ``plan_dual`` / ``plan``：双臂末端目标 → ``{status, position, velocity, ...}``
+        - ``plan_one_ee``：单链单末端（如 7-DOF 臂，构造时传 ``ee_link``）→ 同上 dict，``position`` 为 ``(T, n_dof)``
         - ``plan_single_arm``：单臂移动，另一臂目标位姿由调用方给出（通常取当前末端位姿）
+        - ``apply_world`` / ``set_world`` / ``clear_world``：障碍更新（推荐 ``WorldSpec`` + ``apply_world``）
         - ``plan_grippers``：夹爪插值 dict
         - ``reset``：重置 MotionGen 内部状态
     """
 
-    dof_dual_arm: int = 14
+    @property
+    def dof(self) -> int:
+        """当前规划器配置下的自由度（关节数）。"""
+        return self._dof
 
     def __init__(
         self,
-        urdf_path: str = "/home/junzhe/Benchmark/robot/realman/realman_franka_ee.urdf",
+        urdf_path: Optional[str] = None,
         device: str = "cuda:0",
         use_curobo_cache: bool = True,
         cache_path: Optional[str] = None,
         interpolation_dt: float = 0.05,
         apply_robot_to_curobo_frame_transform: bool = True,
         use_cuda_graph: bool = False,
+        robot_spec: Optional[RobotSpec] = None,
+        *,
+        # 若直接构造单臂，用 robot_spec 或 ee_link 参数：
+        ee_link: Optional[str] = None,
     ):
         self.device = device
         self.tensor_args = TensorDeviceType(device=device)
         self.apply_frame_transform = apply_robot_to_curobo_frame_transform
         self.interpolation_dt = interpolation_dt
 
-        if cache_path is None and use_curobo_cache:
+        if robot_spec is not None:
+            eff_urdf = robot_spec.urdf_path
+            eff_cache = robot_spec.cache_path if robot_spec.cache_path is not None else cache_path
+            load_kw: Dict[str, Any] = {
+                "base_link": robot_spec.base_link,
+                "left_ee_link": robot_spec.left_ee_link,
+                "right_ee_link": robot_spec.right_ee_link,
+            }
+        else:
+            eff_urdf = urdf_path or "/home/junzhe/Benchmark/robot/realman/realman_franka_ee.urdf"
+            eff_cache = cache_path
+            load_kw = {}
+
+        if eff_cache is None and use_curobo_cache:
             cache_dir = os.path.expanduser("~/.cache/curobo_realman")
             os.makedirs(cache_dir, exist_ok=True)
             # v2: 与 realman_franka_ee.urdf 的 panda_*_hand 末端命名一致（旧缓存含 left_ee 会 KeyError）
-            cache_path = os.path.join(cache_dir, "realman_config_v2.yaml")
+            eff_cache = os.path.join(cache_dir, "realman_config_v2.yaml")
 
         # 整块放入非 inference 上下文，避免内部缓冲区成为 inference tensor 且与 warmup/plan 冲突
         with _curobo_autograd_context():
             self.robot_config = load_realman_config(
-                urdf_path=urdf_path,
-                cache_path=cache_path,
+                urdf_path=eff_urdf,
+                cache_path=eff_cache,
                 device=device,
+                ee_link=ee_link,
+                **load_kw,
             )
             # world_model 不可为 None：否则 cuRobo 不会创建 world_coll_checker，后续 update_world 会崩。
             self.motion_gen_config = MotionGenConfig.load_from_robot_config(
@@ -95,6 +150,9 @@ class CuroboPlanner:
             )
             self.motion_gen = MotionGen(self.motion_gen_config)
             self.motion_gen.warmup()
+
+        # 计算自由度：不同 cuRobo 版本 kinematics 可能是 joint_limits 属性或 get_joint_limits()
+        self._dof = _infer_robot_dof(self.robot_config.kinematics)
 
         self.world_config = WorldConfig()
         self._update_world()
@@ -173,6 +231,13 @@ class CuroboPlanner:
         self.world_config = WorldConfig()
         self._update_world()
 
+    def apply_world(self, spec: WorldSpec) -> None:
+        """使用 :class:`WorldSpec` 更新障碍（空则等价于 :meth:`clear_world`）。"""
+        if not spec.obstacles:
+            self.clear_world()
+            return
+        self.set_world(spec.to_planner_obstacles())
+
     def reset(self, reset_seed: bool = True) -> None:
         if hasattr(self.motion_gen, "reset"):
             self.motion_gen.reset(reset_seed=reset_seed)
@@ -191,19 +256,19 @@ class CuroboPlanner:
         enable_opt: bool = True,
     ) -> dict[str, Any]:
         """
-        双臂同时规划（``plan_batch``，batch=1）。
+        双臂同时规划（``plan_batch``，batch=1）；当前自由度 = ``self.dof``。
 
         参数:
-            start_joint_positions: (14,) 左 7 + 右 7
-            goal_poses: ``{'left': {'position','quaternion'}, 'right': {...}}``，与 ``set_world`` 同坐标约定
+            start_joint_positions: (self.dof,)，顺序与 URDF 生成时一致
+            goal_poses: ``{'left': {'position','quaternion'}, 'right': {...}}``（单臂场景不使用此接口），与 ``set_world`` 同坐标约定
 
         返回:
-            RoboTwin 风格 dict：``status`` / ``position`` (T,14) / ``velocity`` / ``detail`` 等
+            RoboTwin 风格 dict：``status`` / ``position`` (T, self.dof) / ``velocity`` / ``detail`` 等
         """
         start_joint_positions = np.asarray(start_joint_positions, dtype=np.float32).reshape(-1)
-        if start_joint_positions.shape[0] != self.dof_dual_arm:
+        if start_joint_positions.shape[0] != self._dof:
             raise ValueError(
-                f"期望起始关节 shape ({self.dof_dual_arm},)，得到 {start_joint_positions.shape}"
+                f"期望起始关节 shape ({self._dof},)，得到 {start_joint_positions.shape}"
             )
         if "left" not in goal_poses or "right" not in goal_poses:
             raise KeyError("goal_poses 必须包含 'left' 与 'right'")
@@ -268,6 +333,52 @@ class CuroboPlanner:
             traj = out["position"] if ok else np.array([])
             return ok, traj
         return out
+
+    def plan_one_ee(
+        self,
+        start_joint_positions: np.ndarray,
+        goal_pose: Dict[str, np.ndarray],
+        max_attempts: int = 60,
+        timeout: float = 10.0,
+        enable_graph: bool = True,
+        enable_opt: bool = True,
+    ) -> dict[str, Any]:
+        """
+        单末端运动规划：适用于 ``link_names`` 仅含一个末端的配置（通常构造时传入 ``ee_link``，``self.dof`` 为 7 等）。
+
+        参数:
+            start_joint_positions: ``(self.dof,)``
+            goal_pose: ``{'position': (3,), 'quaternion': (4,)}``（与 ``set_world`` / ``plan_dual`` 同坐标约定）
+        """
+        start_joint_positions = np.asarray(start_joint_positions, dtype=np.float32).reshape(-1)
+        if start_joint_positions.shape[0] != self._dof:
+            raise ValueError(
+                f"plan_one_ee 期望起始关节 shape ({self._dof},)，得到 {start_joint_positions.shape}"
+            )
+        pos = np.asarray(goal_pose["position"], dtype=np.float64).reshape(3)
+        quat = np.asarray(goal_pose["quaternion"], dtype=np.float64).reshape(4)
+        pc, qc = self._transform_pose(pos, quat)
+        pos_arr = pc.astype(np.float32).reshape(1, 1, 3)
+        quat_arr = qc.astype(np.float32).reshape(1, 1, 4)
+
+        plan_config = MotionGenPlanConfig(
+            enable_graph=enable_graph,
+            enable_opt=enable_opt,
+            max_attempts=max_attempts,
+            timeout=timeout,
+        )
+
+        with _curobo_autograd_context():
+            start_t = self.tensor_args.to_device(start_joint_positions[np.newaxis, :])
+            start_state = JointState.from_position(start_t)
+            positions_tensor = self.tensor_args.to_device(pos_arr)
+            quaternions_tensor = self.tensor_args.to_device(quat_arr)
+            goal_pose_t = Pose(position=positions_tensor, quaternion=quaternions_tensor)
+            result = self.motion_gen.plan_batch(start_state, goal_pose_t, plan_config)
+        self.last_result = result
+        plan_dict = motion_gen_batch_result_to_plan_dict(result, batch_index=0)
+        self.last_plan_dict = plan_dict
+        return plan_dict
 
     def plan_single_arm(
         self,
