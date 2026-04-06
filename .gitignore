@@ -16,3 +16,7 @@ env/
 .env
 
 env_order_info/
+
+# Agent harness: local task persistence and scratch runs
+.tasks/
+.tasks_*/

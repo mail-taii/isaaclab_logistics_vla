@@ -7,10 +7,13 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.sensors import CameraCfg
+from isaaclab.sim import PinholeCameraCfg
 
 from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 from isaaclab_logistics_vla.utils.constant import *
+from isaaclab_logistics_vla.utils.util import euler_to_quat_isaac
 
 @configclass
 class BaseOrderSceneCfg(InteractiveSceneCfg):
@@ -24,6 +27,25 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
     light = AssetBaseCfg(
         prim_path="/World/light",
         spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+    )
+
+    # 顶视相机：用于 VLM-agent 的唯一 tool（参考 cjx 分支 topview / top_camera）
+    # 注意：渲染需要 AppLauncher(enable_cameras=True) 或等价配置。
+    top_camera = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/top_camera",
+        offset=CameraCfg.OffsetCfg(
+            pos=(1.0, 2.0, 4.0),
+            rot=euler_to_quat_isaac(r=0, p=180, y=0, return_tensor=False),
+        ),
+        spawn=PinholeCameraCfg(
+            focal_length=24.0,
+            focus_distance=400.0,
+            horizontal_aperture=20.955,
+            clipping_range=(0.1, 1.0e5),
+        ),
+        width=1024,
+        height=768,
+        data_types=["rgb"],
     )
 
     world_anchor = RigidObjectCfg(
@@ -75,13 +97,13 @@ class BaseOrderSceneCfg(InteractiveSceneCfg):
     # e_desk = RigidObjectCfg(
     #     prim_path="{ENV_REGEX_NS}/o_desk",
     #     spawn=UsdFileCfg(
-    #         usd_path=f"/home/daniel/fff/model_files/benchmark/urdf/F.usd",
+    #         usd_path=f"{ASSET_ROOT_PATH}/urdf/F.usd",
     #         mass_props= sim_utils.MassPropertiesCfg(mass=20.0),
     #         scale=(1, 1, 1),
     #         rigid_props=schemas.RigidBodyPropertiesCfg(
-    #             sleep_threshold=0.05, 
+    #             sleep_threshold=0.05,
     #         ),
-            
+    #
     #     ),
     #     init_state=RigidObjectCfg.InitialStateCfg(pos=(0.35625, 3.55143, -0.12113),rot=(0.5,0.5,-0.5,-0.5)),
     # )

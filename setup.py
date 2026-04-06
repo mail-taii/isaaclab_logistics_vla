@@ -94,4 +94,7 @@ setup(
         "Isaac Sim :: 5.0.0",
     ],
     zip_safe=False,
+    extras_require={
+        "vlm-api": ["anthropic>=0.34.0"],
+    },
 )

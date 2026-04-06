@@ -76,8 +76,19 @@ class BaseOrderCommandTerm(CommandTerm):
             (self.num_envs, self.num_objects), -1, dtype=torch.long, device=self.device
         )
 
+        # 值范围：0 ~ num_targets-1  -1代表该物品不是目标物（干扰物 / 不生成）
+        # 注意：子类 `_assign_objects_boxes()` 会写入该字段，且回放/记录也依赖它。
+        self.obj_to_target_id = torch.full(
+            (self.num_envs, self.num_objects), -1, dtype=torch.long, device=self.device
+        )
+
         # is_active: 本局是否出现 (ID != -1)
         self.is_active_mask = torch.zeros(
+            (self.num_envs, self.num_objects), dtype=torch.bool, device=self.device
+        )
+
+        # is_target: 本局是否是目标物（target_id != -1）
+        self.is_target_mask = torch.zeros(
             (self.num_envs, self.num_objects), dtype=torch.bool, device=self.device
         )
 

@@ -1,5 +1,8 @@
 import os
-ASSET_ROOT_PATH = os.getenv("ASSET_ROOT_PATH", "")
+# 资产根路径统一入口：
+# - 推荐通过环境变量 ASSET_ROOT_PATH 显式指定
+# - 若未指定，默认使用本仓库约定路径（便于开箱即用）
+ASSET_ROOT_PATH = os.getenv("ASSET_ROOT_PATH", "/home/junzhe/Benchmark")
 
 WORK_BOX_PARAMS = {
     'USD_PATH':f"{ASSET_ROOT_PATH}/env/Box.usd",

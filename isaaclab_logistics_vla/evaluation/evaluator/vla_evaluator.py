@@ -21,9 +21,10 @@ class VLA_Evaluator:
         self.lift_duration = 250  
         self.step_counter = 0    
         
-        # ... 保持原有的 RRT 路径加载逻辑不变 ...
-        txt_path = '/home/wst/code/ompl/RRT_path.txt'
-        if os.path.exists(txt_path):
+        # （可选）轨迹回放：通过环境变量指定，避免写死路径
+        # - RRT_TRAJ_PATH: 指向一个 14 维关节序列 txt（与原逻辑一致）
+        txt_path = os.environ.get("RRT_TRAJ_PATH", "").strip()
+        if txt_path and os.path.exists(txt_path):
             self.action_trajectory = self._load_and_process_txt(txt_path)
             print(f"[INFO] Successfully loaded {len(self.action_trajectory)} steps from {txt_path}")
         else:
