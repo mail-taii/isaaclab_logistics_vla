@@ -6,21 +6,8 @@ import time
 
 
 class VLA_Evaluator:
-    def __init__(
-        self,
-        env_cfg,
-        policy="random",
-        from_json=2,
-        device: str = "cuda:0",
-        robot_id: str | None = None,
-        curobo_plan_kwargs: dict | None = None,
-    ):
+    def __init__(self, env_cfg, policy='random', from_json=2):
         self.from_json = from_json
-        self.policy_name = policy
-        self.device = device
-        self.robot_id = robot_id
-        self._curobo_plan_kwargs = dict(curobo_plan_kwargs or {})
-        self._curobo_plan_policy = None
         
         #---在初始化环境之前，将参数注入配置---
         if hasattr(env_cfg.commands, "object_commands"):
@@ -81,28 +68,13 @@ class VLA_Evaluator:
         
         return torch.tensor(interleaved_data, dtype=torch.float32, device=self.env.device)
 
-    def _get_curobo_plan_policy(self):
-        if self._curobo_plan_policy is None:
-            from isaaclab_logistics_vla.evaluation.models.curobo_plan_policy import CuRoboPlanPolicy
-
-            self._curobo_plan_policy = CuRoboPlanPolicy(
-                device=self.device,
-                robot_id=self.robot_id,
-                **self._curobo_plan_kwargs,
-            )
-        return self._curobo_plan_policy
 
     def generate_action(self, obs):
-        if self.policy_name == "curobo_plan":
-            return self._get_curobo_plan_policy()(self.env)
+        actions = torch.zeros((self.env.num_envs, 17), device=self.env.device)
 
-        adim = self.env.action_manager.total_action_dim
-        actions = torch.zeros((self.env.num_envs, adim), device=self.env.device)
-
-        if adim >= 17:
-            actions[:, 16] = 0.5
-            actions[:, 14] = 0.0
-            actions[:, 15] = 0.0
+        actions[:, 16] = 0.5 
+        actions[:, 14] = 0.0
+        actions[:, 15] = 0.0
 
         if self.step_counter < self.lift_duration:
             pass 
@@ -128,22 +100,12 @@ class VLA_Evaluator:
         # 环境 reset 时会根据 from_json 决定是随机生成、记录 JSON 还是读取 JSON
         self.env.reset()
 
-        if self.policy_name == "curobo_plan":
-            self._get_curobo_plan_policy().reset()
-            print(f"[INFO] Evaluation started. Policy: curobo_plan (device={self.device})")
-
         print(f"[INFO] Evaluation started. Mode: {self.from_json}")
 
         while True:
-            # curobo 规划在构造/求解时不能始终在 inference_mode 下（见 CuroboPlanner._curobo_autograd_context）
-            if self.policy_name == "curobo_plan":
+            with torch.inference_mode():
                 actions = self.generate_action(None)
-                with torch.inference_mode():
-                    obs, rew, terminated, truncated, info = self.env.step(actions)
-            else:
-                with torch.inference_mode():
-                    actions = self.generate_action(None)
-                    obs, rew, terminated, truncated, info = self.env.step(actions)
+                obs, rew, terminated, truncated, info = self.env.step(actions)
                 #Atime.sleep(1)
                 if i%100==0 or i<10:
                     isaac_env = self.env.unwrapped
