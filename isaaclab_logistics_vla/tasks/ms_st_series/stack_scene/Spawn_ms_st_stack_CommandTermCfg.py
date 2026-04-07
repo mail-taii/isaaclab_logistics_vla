@@ -19,6 +19,7 @@ class Spawn_ms_st_stack_CommandTermCfg(OrderCommandTermCfg):
     max_instances_per_sku: int = 3     # 每种 SKU 最多选几个实例
     min_source_box: int = 2            # 最少使用几个原料箱
     max_source_box: int = 3            # 最多使用几个原料箱
+    max_redundant_ratio: float = 0.7
 
     # 堆叠参数
     max_stacks: int = 4                # 每个原料箱最多几摞

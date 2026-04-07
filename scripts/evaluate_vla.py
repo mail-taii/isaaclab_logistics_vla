@@ -6,15 +6,15 @@ parser = argparse.ArgumentParser(description="VLA-benchmark for Isaac Lab enviro
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--policy", type=str, default='random', help="Name of the policy.")
 parser.add_argument("--device", type=str, default='cuda:0')
 # 新增：FROM_JSON 参数，0: 生成JSON, 1: 消费JSON, 2: 独立随机(默认)
 parser.add_argument("--from_json", type=int, default=2, help="0: Record JSON, 1: Replay JSON, 2: Pure Random")
 
-parser.add_argument("--asset_root_path",type=str,default="/home/wst/model_files/benchmark")
-parser.add_argument("--task_scene_name",type=str,default="Spawn_ms_st_dense_EnvCfg")
+parser.add_argument("--asset_root_path",type=str,default="/home/junzhe/code/model/Benchmark")
+parser.add_argument("--task_scene_name",type=str,default="Spawn_ms_mt_stack_EnvCfg")
 
 args_cli, _ = parser.parse_known_args()
 
