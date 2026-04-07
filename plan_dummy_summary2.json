@@ -1,0 +1,25 @@
+{
+  "backend": "dummy",
+  "test_describe": false,
+  "test_plan": true,
+  "enable_task_system": true,
+  "tasks_dir": "/home/junzhe/isaaclab_logistics_vla/.tasks_plan_dummy2",
+  "print_task_board": false,
+  "stats": {
+    "steps": 4,
+    "parse_errors": 0,
+    "invalid_calls": 0,
+    "tool_failures": 0,
+    "done": true,
+    "done_reason": "vlm_done",
+    "scene_descriptions": [],
+    "task_create_calls": 2,
+    "task_update_calls": 0,
+    "task_get_calls": 0,
+    "task_list_calls": 0,
+    "first_tool_called": "get_topview_image"
+  },
+  "done_reason": "vlm_done",
+  "instruction": "你是一个VLM机器人助手。请先调用 get_topview_image，然后输出 scene_description 描述你看到的场景，最后 done 结束。",
+  "instruction_meta": null
+}

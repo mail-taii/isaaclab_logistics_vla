@@ -52,6 +52,12 @@ def main():
     )
     parser.add_argument("--out_json", type=str, default="", help="可选：把运行结果写入该 JSON 文件路径。")
     parser.add_argument(
+        "--trace_jsonl",
+        type=str,
+        default="",
+        help="可选：把每一步模型输出/解析/tool 调用与结果摘要按 JSONL 追加写入该文件（不保存图片本体，仅保存 shape/dtype 摘要）。",
+    )
+    parser.add_argument(
         "--top_camera_width",
         type=int,
         default=640,
@@ -210,6 +216,7 @@ def main():
         require_first_tool_name=("get_topview_image" if args_cli.test_plan else ""),
         require_task_dag_before_done=args_cli.test_plan,
         tasks_dir_for_validation=(args_cli.tasks_dir if args_cli.test_plan else ""),
+        trace_jsonl_path=args_cli.trace_jsonl,
     )
     instruction_text = (args_cli.instruction or "").strip()
     instruction_meta = None
@@ -278,6 +285,7 @@ def main():
         "enable_task_system": args_cli.enable_task_system,
         "tasks_dir": args_cli.tasks_dir if args_cli.enable_task_system else None,
         "print_task_board": args_cli.print_task_board if args_cli.enable_task_system else False,
+        "trace_jsonl": args_cli.trace_jsonl or None,
         "stats": runner.stats.__dict__,
         "done_reason": runner.stats.done_reason,
         "instruction": instruction_text,
@@ -289,6 +297,7 @@ def main():
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    runner.close()
     env.close()
     simulation_app.close()
 

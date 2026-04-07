@@ -1,0 +1,21 @@
+{
+  "backend": "dummy",
+  "test_describe": true,
+  "enable_task_system": true,
+  "tasks_dir": "/home/junzhe/isaaclab_logistics_vla/.tasks_test",
+  "stats": {
+    "steps": 3,
+    "parse_errors": 0,
+    "invalid_calls": 0,
+    "tool_failures": 0,
+    "done": true,
+    "done_reason": "vlm_done",
+    "scene_descriptions": [
+      "[dummy] 顶视图中可见工作台、原料箱与订单箱等区域。",
+      "[dummy] 结束。"
+    ]
+  },
+  "done_reason": "vlm_done",
+  "instruction": "你是一个VLM机器人助手。请先调用 get_topview_image，然后输出 scene_description 描述你看到的场景，最后 done 结束。",
+  "instruction_meta": null
+}

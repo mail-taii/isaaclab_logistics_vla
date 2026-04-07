@@ -5,6 +5,10 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+import json
+import time
+from pathlib import Path
+
 from isaaclab_logistics_vla.agent.json_parsing import parse_json_object_loose
 from isaaclab_logistics_vla.agent.tools import ToolManager
 from isaaclab_logistics_vla.agent.vlm_backend import Message, VlmBackend, VlmToolSchema
@@ -57,6 +61,7 @@ class VlmToolUseRunner:
         require_first_tool_name: str = "",
         require_task_dag_before_done: bool = False,
         tasks_dir_for_validation: str = "",
+        trace_jsonl_path: str = "",
     ):
         self.backend = backend
         self.tools = tool_manager
@@ -66,8 +71,39 @@ class VlmToolUseRunner:
         self.require_first_tool_name = (require_first_tool_name or "").strip()
         self.require_task_dag_before_done = bool(require_task_dag_before_done)
         self.tasks_dir_for_validation = (tasks_dir_for_validation or "").strip()
+        self._trace_jsonl_path = (trace_jsonl_path or "").strip()
+        self._trace_fp = None
+        if self._trace_jsonl_path:
+            p = Path(self._trace_jsonl_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            # line-buffered append; best-effort trace
+            self._trace_fp = p.open("a", encoding="utf-8")
         self.messages: List[Message] = []
         self.stats = RunStats()
+
+    def close(self) -> None:
+        if self._trace_fp is not None:
+            try:
+                self._trace_fp.flush()
+                self._trace_fp.close()
+            finally:
+                self._trace_fp = None
+
+    def _trace(self, event: str, payload: Dict[str, Any]) -> None:
+        if self._trace_fp is None:
+            return
+        try:
+            rec = {
+                "ts": time.time(),
+                "event": event,
+                "step": int(self.stats.steps),
+                "payload": payload,
+            }
+            self._trace_fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self._trace_fp.flush()
+        except Exception:
+            # tracing must not break evaluation loop
+            return
 
     def reset(self, instruction: str) -> None:
         self.messages = [
@@ -75,6 +111,15 @@ class VlmToolUseRunner:
             {"role": "user", "content": instruction},
         ]
         self.stats = RunStats()
+        self._trace(
+            "run_reset",
+            {
+                "model": self.backend.model_name,
+                "instruction": instruction,
+                "system_prompt": self.system_prompt,
+                "tools": [t.__dict__ for t in self._tool_schemas()],
+            },
+        )
 
     def _tool_schemas(self) -> List[VlmToolSchema]:
         lst = []
@@ -89,6 +134,7 @@ class VlmToolUseRunner:
         if self.stats.steps >= self.max_steps:
             self.stats.done = True
             self.stats.done_reason = "max_steps"
+            self._trace("done_max_steps", {"done_reason": self.stats.done_reason, "stats": self.stats.__dict__})
             return {"done": True, "reason": "max_steps"}
 
         raw = self.backend.infer(
@@ -96,15 +142,24 @@ class VlmToolUseRunner:
             messages=self.messages,
             tools=self._tool_schemas(),
         )
+        self._trace(
+            "assistant_raw",
+            {
+                "raw": raw,
+                "current_image": {"type": "ndarray", "shape": list(current_image.shape), "dtype": str(current_image.dtype)},
+            },
+        )
         self.messages.append({"role": "assistant", "content": raw, "model": self.backend.model_name})
 
         parsed = parse_json_object_loose(raw)
         if not parsed.ok or parsed.data is None:
             self.stats.parse_errors += 1
             self.stats.steps += 1
+            self._trace("parse_error", {"raw": raw, "stats": self.stats.__dict__})
             return {"done": False, "parse_error": True, "raw": raw}
 
         data = parsed.data
+        self._trace("assistant_parsed", {"data": data})
 
         def _record_scene_description() -> None:
             d = data.get("scene_description")
@@ -146,6 +201,7 @@ class VlmToolUseRunner:
             self.stats.done = True
             self.stats.done_reason = "vlm_done"
             self.stats.steps += 1
+            self._trace("done_vlm", {"summary": data.get("summary", ""), "data": data, "stats": self.stats.__dict__})
             return {"done": True, "reason": "vlm_done", "summary": data.get("summary", "")}
 
         tool_name = data.get("tool_name")
@@ -155,12 +211,15 @@ class VlmToolUseRunner:
             if not isinstance(params, dict):
                 self.stats.invalid_calls += 1
                 self.stats.steps += 1
+                self._trace("invalid_call", {"error": "parameters_not_dict", "data": data, "stats": self.stats.__dict__})
                 return {"done": False, "invalid_call": True, "error": "parameters_not_dict", "data": data}
 
+            self._trace("tool_call", {"tool_name": tool_name, "parameters": params})
             tool_result = self.tools.execute(tool_name, **params)
             if not tool_result.get("success", False):
                 self.stats.tool_failures += 1
             self.messages.append({"role": "tool", "name": tool_name, "content": _tool_result_for_history(tool_result)})
+            self._trace("tool_result", {"tool_name": tool_name, "tool_result": _tool_result_for_history(tool_result)})
 
             # 记录第一个 tool（用于强制先看图）
             if not self.stats.first_tool_called:
@@ -168,6 +227,15 @@ class VlmToolUseRunner:
                 if self.require_first_tool_name and self.stats.first_tool_called != self.require_first_tool_name:
                     self.stats.invalid_calls += 1
                     self.stats.steps += 1
+                    self._trace(
+                        "invalid_call",
+                        {
+                            "error": "first_tool_must_be",
+                            "required": self.require_first_tool_name,
+                            "got": self.stats.first_tool_called,
+                            "stats": self.stats.__dict__,
+                        },
+                    )
                     return {
                         "done": False,
                         "invalid_call": True,
@@ -186,6 +254,7 @@ class VlmToolUseRunner:
                 self.stats.task_list_calls += 1
 
             self.stats.steps += 1
+            self._trace("step_end", {"stats": self.stats.__dict__})
             return {"done": False, "tool_called": tool_name, "tool_result": tool_result}
 
         # 无 tool：测试模式下允许仅输出场景描述（先 tool 再描述）
@@ -193,6 +262,7 @@ class VlmToolUseRunner:
             if not self.allow_scene_description_only:
                 self.stats.invalid_calls += 1
                 self.stats.steps += 1
+                self._trace("invalid_call", {"error": "scene_description_only_disabled", "data": data, "stats": self.stats.__dict__})
                 return {
                     "done": False,
                     "invalid_call": True,
@@ -202,10 +272,12 @@ class VlmToolUseRunner:
             _record_scene_description()
             desc = data["scene_description"].strip()
             self.stats.steps += 1
+            self._trace("scene_description", {"scene_description": desc, "stats": self.stats.__dict__})
             return {"done": False, "description_only": True, "scene_description": desc}
 
         self.stats.invalid_calls += 1
         self.stats.steps += 1
+        self._trace("invalid_call", {"error": "expected_tool_or_done", "data": data, "stats": self.stats.__dict__})
         return {
             "done": False,
             "invalid_call": True,

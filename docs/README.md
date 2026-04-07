@@ -40,6 +40,8 @@ env = gym.make("Isaac-Logistics-SingleArmSorting-v0")
 
 See the [API documentation](api.md) for detailed information.
 
+- **Agent / VLM harness（中文）**：[Agent 架构设计说明](AGENT_ARCHITECTURE.md)
+
 ## License
 
 BSD-3-Clause

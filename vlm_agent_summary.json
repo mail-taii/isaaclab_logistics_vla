@@ -1,0 +1,12 @@
+{
+  "backend": "dummy",
+  "stats": {
+    "steps": 2,
+    "parse_errors": 0,
+    "invalid_calls": 0,
+    "tool_failures": 0,
+    "done": true,
+    "done_reason": "vlm_done"
+  },
+  "done_reason": "vlm_done"
+}
