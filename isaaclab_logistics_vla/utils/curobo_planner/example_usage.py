@@ -17,10 +17,11 @@ import os
 
 import numpy as np
 
+from isaaclab_logistics_vla.configs.pinned_eval_curobo import DEFAULT_CUROBO_KINEMATICS_YAML
 from isaaclab_logistics_vla.utils.curobo_planner import CuroboPlanner
 
-# 与 CuroboPlanner(use_curobo_cache=True) 默认路径一致；可改为你的 YAML。
-_EXAMPLE_KIN_YAML = os.path.expanduser("~/.cache/curobo_realman/realman_config_v2.yaml")
+# 与团队固定默认路径一致（见 configs/pinned_eval_curobo.py）
+_EXAMPLE_KIN_YAML = DEFAULT_CUROBO_KINEMATICS_YAML
 
 
 def example_basic_planning() -> tuple[bool, np.ndarray | None]:

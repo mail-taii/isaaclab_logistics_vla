@@ -66,9 +66,21 @@ def generate_and_write(
 
 
 def main() -> None:
+    _repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    _default_out = os.path.join(
+        _repo,
+        "isaaclab_logistics_vla",
+        "assets",
+        "curobo",
+        "realman_kinematics.yaml",
+    )
     p = argparse.ArgumentParser(description="URDF → cuRobo kinematics YAML（供 CuroboPlanner 加载）")
     p.add_argument("--urdf", required=True, help="输入 URDF 路径")
-    p.add_argument("--output", required=True, help="输出 YAML 路径")
+    p.add_argument(
+        "--output",
+        default=_default_out,
+        help=f"输出 YAML 路径（默认：包内固定位置 {_default_out}）",
+    )
     p.add_argument("--base-link", default="dual_rm_75b_description_platform_base_link")
     p.add_argument("--left-ee-link", default="panda_left_hand")
     p.add_argument("--right-ee-link", default="panda_right_hand")

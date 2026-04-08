@@ -2,6 +2,14 @@
 
 本文档面向 **`isaaclab_logistics_vla.utils.curobo_planner`** 算法封装层，说明 **API 输入/输出**、**配置文件要求**、**使用前提**，并单独强调 **基座 / 坐标系** 应如何选择（常见误区：整车 root 与机械臂运动学基座混用）。
 
+**团队固定布局（可选，减少调用方填路径）**：常量集中在 **`isaaclab_logistics_vla.configs.pinned_eval_curobo`**：
+
+- **`DEFAULT_CUROBO_KINEMATICS_YAML`**：`isaaclab_logistics_vla/assets/curobo/realman_kinematics.yaml`（`CuroboPlanner(use_curobo_cache=True)` 且未传 `cache_path` 时默认加载此文件）
+- **`DEFAULT_VLA_ASSET_ROOT_PATH`**：与**扩展仓库根目录同级**的 `Benchmark` 目录（`scripts/evaluate_vla.py` 的默认 `--asset_root_path` 与此一致）
+- **`DEFAULT_VLA_TASK_SCENE_NAME`**：`Spawn_ms_st_dense_EnvCfg`（默认评测场景名）
+
+首次部署须将 kinematics YAML **生成或拷贝到上述包内路径**（见 **§3.1**）。目录布局与默认不符时，仍可显式传入 `cache_path` / CLI 覆盖。
+
 ---
 
 ## 0. 最小流程：哪些 API「必须调」、哪些是可选
@@ -10,9 +18,16 @@
 
 | 方式 | 典型代码 | 说明 |
 |------|----------|------|
-| **A. 只给 YAML 路径** | `CuroboPlanner(cache_path=".../robot_kin.yaml", device="cuda:0")` | 最简单；可与 **`use_curobo_cache=True`** 使用默认路径（文件须已存在，见 **§2.3**）。 |
+| **A. 只给 YAML 路径** | `CuroboPlanner(cache_path=".../robot_kin.yaml", device="cuda:0")` | 最简单；也可 **`CuroboPlanner(device="cuda:0")`**：不传 `cache_path` 且 **`use_curobo_cache=True`** 时，使用包内默认 **`assets/curobo/realman_kinematics.yaml`**（见 **`pinned_eval_curobo`** 与 **§2.3**）。 |
 | **B. `RobotSpec`** | `spec = RobotSpec.from_kinematics_yaml(".../robot_kin.yaml", ...)` → `CuroboPlanner(robot_spec=spec, ...)` | `from_kinematics_yaml` / `from_robot_config_yaml` / `from_urdf` 都是 **构造 `RobotSpec` 的工厂**；只有当你想用 dataclass 携带 `urdf_path` 等元数据时才需要。**不是**规划循环里每步都调。 |
 | **C. 内存里的 `RobotConfig`** | `CuroboPlanner(robot_config=..., device="cuda:0")` | 自行用 cuRobo API 建好 `RobotConfig` 时；**跳过**磁盘 YAML。 |
+
+**Realman 自动读取（推荐用于仿真循环）**：你也可以把“读取当前 root 位姿 + 平台高度”的函数注入给规划器：
+
+- `CuroboPlanner(..., realman_state_reader=...)`
+- 或 `planner.set_realman_state_reader(...)`
+
+之后即可调用 `plan_dual_world_to_world_auto(...)` / `plan_one_ee_world_to_world_auto(...)`，每次都会自动读取最新状态并完成 World→base_link 变换、障碍更新、IK 与规划。
 
 **`RobotSpec` 表（§2.1）里的 `@classmethod`**：仅在采用方式 **B** 时、**创建规划器之前** 调用一次，用来得到 `RobotSpec`；若用方式 **A**，可以完全 **不 import `RobotSpec`**。
 
@@ -33,6 +48,44 @@
 
 - **生成 YAML 时**（`scripts/generate_curobo_robot_kinematics_yaml.py` 的 `--base-link`）**必须选「机械臂（双臂）运动学链在 URDF 里从哪一节开始算」的那一节**，即 **臂系运动学基座**。
 - **`plan_dual` / `plan_single_arm` / `set_world` / `WorldSpec` 里给出的位置与四元数，必须与上述 A 在同一套「相对 base_link 的坐标约定」下表达**（见 1.2 与 1.3）。若你从仿真里读的是 **整车 root / World / Pelvis / Camera** 下的点，必须在 **你的集成代码**里先做 **`该系 → base_link 固连系`** 的刚体变换，再送给封装；否则会出现 **IK_FAIL、目标不可达、障碍与几何不一致** 等。
+
+### 1.1.3 Realman：root（`base_link_underpan`）→ 运动学 `base_link`（平台基）怎么处理？
+
+在 `cjx` 分支的 Realman + cuRobo 使用里，有一个很典型的差异：**场景 root link**（如 `base_link_underpan`）并不等于 cuRobo 运动学 `base_link`，并且还存在 **`platform_joint` 升降**导致的 z 偏移。
+
+本仓库在 `utils.curobo_planner` 内提供了**不依赖 Isaac 类型**的辅助函数（`realman_frames.py`），用于把 **World** 下的点/位姿变换到 **base_link 固连系**：
+
+- **计算 base_link 在 World 下的位姿（含平台 z）**：
+
+```python
+from isaaclab_logistics_vla.utils.curobo_planner import compute_realman_base_link_pose_w
+
+base_pos_w, base_quat_wxyz = compute_realman_base_link_pose_w(
+    root_pos_w=root_pos_w,                 # (3,)
+    root_quat_wxyz=root_quat_wxyz,         # (4,) wxyz
+    platform_joint_value=platform_joint,   # 标量（无平台可给 0）
+    arm_base_offset_in_root_xyz=(0.0, -0.11663, 0.271),  # cjx 注册表的默认值（来自 URDF platform_joint origin）
+)
+```
+
+- **World → base_link 变换后再送入规划器**（目标与障碍同理）：
+
+```python
+from isaaclab_logistics_vla.utils.curobo_planner import world_pose_to_base_pose
+
+pos_b, quat_b = world_pose_to_base_pose(
+    pos_w=target_pos_w,
+    quat_wxyz=target_quat_wxyz,
+    base_pos_w=base_pos_w,
+    base_quat_wxyz=base_quat_wxyz,
+)
+# 将 pos_b/quat_b 作为 goal_poses 输入给 CuroboPlanner
+```
+
+**要点：**
+
+- 这一步解决的是 **World → base_link**；之后 `CuroboPlanner` 还可能做轴约定对齐（`apply_robot_to_curobo_frame_transform` 的绕 z -90°）。两者不要混淆。
+- `arm_base_offset_in_root_xyz` 与 `platform_joint_value` 是 **Realman 特有的工程参数**：需要与你的 URDF/资产一致。
 
 ### 1.1.1 双人形、双臂：物理上有「左右肩两个基」，为何这里仍是一个 `base_link`？
 
@@ -132,10 +185,11 @@
 | `robot_spec` | `RobotSpec \| None` | 使用 `robot_spec.cache_path` 作为 YAML 路径；若同时传入 **`cache_path`** 关键字，则 **以 `cache_path` 覆盖** spec 中的路径。 |
 | `cache_path` | `str \| None` | 无 `robot_spec` 时作为 YAML 路径；有 `robot_spec` 时仅当本参数非 `None` 时 **覆盖** `robot_spec.cache_path`。 |
 | `device` | `str` | 如 `cuda:0`；用于 `TensorDeviceType` 与 `from_dict`。 |
-| `use_curobo_cache` | `bool` | `True` 且未由 `robot_config` / `cache_path` / `robot_spec` 解析出路径时，使用默认 **`~/.cache/curobo_realman/realman_config_v2.yaml`**（**该文件须已预生成**）。 |
+| `use_curobo_cache` | `bool` | `True` 且未由 `robot_config` / `cache_path` / `robot_spec` 解析出路径时，使用包内默认路径 **`DEFAULT_CUROBO_KINEMATICS_YAML`**（即 **`isaaclab_logistics_vla/assets/curobo/realman_kinematics.yaml`**，定义见 **`configs/pinned_eval_curobo.py`**；**须已预生成或拷贝到该路径**）。 |
 | `interpolation_dt` | `float` | 插值步长（秒）。 |
 | `apply_robot_to_curobo_frame_transform` | `bool` | 是否对目标与障碍做绕 z -90° 对齐。 |
 | `use_cuda_graph` | `bool` | 传给 `MotionGenConfig`。 |
+| `realman_state_reader` | `Callable[[], RealmanRobotState] \| None` | 可选：自动读取 Realman 当前 `root_pos_w/root_quat_wxyz/platform_joint_value`，供 `*_auto` 一键接口使用。 |
 
 **输出：** 无；构造副作用为加载模型、`warmup`。缺失 YAML 时抛出 **`FileNotFoundError`**，提示运行仓库生成脚本。
 
@@ -148,6 +202,10 @@
 | `apply_world(spec: WorldSpec)` | `WorldSpec` | `None`；更新内部 `WorldConfig`。 |
 | `set_world(obstacles)` | `List[Dict]`，键与 `WorldSpec` 立方体一致（`position`、`size`/`dims`、可选 `quaternion`、`name`） | `None` |
 | `clear_world()` | — | `None`（空世界）。 |
+
+**Realman 一键（可选）**：若你手头的障碍位姿在 **World** 系下，可用：
+
+- `set_world_from_world(obstacles_world, root_pos_w=..., root_quat_wxyz=..., platform_joint_value=..., arm_base_offset_in_root_xyz=...)`
 
 ---
 
@@ -173,6 +231,27 @@
 | `velocity` | 与 `position` 同形或 `None` | `None` |
 | `detail` | 可选，cuRobo 状态信息 | 常有失败原因 |
 | `interpolation_dt` | 可选 `float` | 可能无 |
+
+**Realman 一键（可选）**：若你的 `goal_poses` 在 **World** 系下，可用：
+
+- `plan_dual_from_world(start_joint_positions, goal_poses_world, root_pos_w=..., root_quat_wxyz=..., platform_joint_value=..., arm_base_offset_in_root_xyz=..., ...)`
+
+### 2.5.1 顶层一键（双臂）：世界系起点/终点（位姿）→ IK → 规划
+
+若你希望“用户只提供 **World 系下左右末端的起始位姿**与**目标位姿**，不提供任何关节角”，可用：
+
+- **`plan_dual_world_to_world(...)`**：内部流程为
+  - 可选：设置本 benchmark 默认障碍（桌子 + 6 箱子）；
+  - root→base_link（含 `platform_joint`）得到 base_link 的 world 位姿；
+  - World→base_link，把左右起始/目标位姿都变到 base_link 系；
+  - 对**起始位姿**做双臂 IK 得到 `q_start`；
+  - 调用 `plan_dual(q_start, goal_poses_b, ...)` 输出轨迹。
+
+返回 dict 会附带 `ik` 字段（包含 `success` 与 `q` 等信息）。
+
+**自动读取版**（更适合仿真循环）：若你已注入 `realman_state_reader`，可改用：
+
+- `plan_dual_world_to_world_auto(start_poses_world=..., goal_poses_world=..., set_default_world=...)`
 
 ---
 
@@ -204,6 +283,26 @@
 
 **输出：** 与 **`plan_dual`** 相同结构的 **`dict`**（`position` 为 **`(T, dof)`**）。
 
+**Realman 一键（可选）**：若你的单末端目标在 **World** 系下，可用：
+
+- `plan_one_ee_from_world(start_joint_positions, goal_pose_world, root_pos_w=..., root_quat_wxyz=..., platform_joint_value=..., arm_base_offset_in_root_xyz=..., ...)`
+
+### 2.7.1 顶层一键：只给世界系起点/终点（位姿）也能规划
+
+若你希望“用户只提供 **World 系下的起始 EE 位姿**与**目标 EE 位姿**，不提供任何关节角”，可用：
+
+- **`plan_one_ee_world_to_world(...)`**：内部流程为
+  - 可选：设置本 benchmark 默认障碍（桌子 + 6 箱子）；
+  - World→base_link；
+  - 对起始 EE 位姿做 IK，得到 `q_start`；
+  - 再调用 `plan_one_ee` 规划到目标 EE 位姿。
+
+输入与返回均是 dict + numpy，保持与其它 `plan_*` 一致；额外会在返回 dict 中附上 `ik` 字段（包含 `success` 与 `q`）。
+
+**自动读取版**：若你已注入 `realman_state_reader`，可改用：
+
+- `plan_one_ee_world_to_world_auto(start_pose_world=..., goal_pose_world=..., set_default_world=...)`
+
 ---
 
 ### 2.8 `plan(...)`、`plan_grippers(...)`、`reset(...)`
@@ -233,22 +332,35 @@
 由使用方在部署前或更新 URDF 后自行执行。本仓库提供独立脚本（**非** `utils.curobo_planner` 子包）：
 
 ```bash
+# 推荐：省略 --output 时写入包内固定路径（与 pinned_eval_curobo / CuroboPlanner 默认一致）
 python scripts/generate_curobo_robot_kinematics_yaml.py \
   --urdf /path/to/robot.urdf \
-  --output /path/to/robot_kin.yaml \
   --base-link <URDF 中的 base link 名> \
   --left-ee-link <左末端 link> \
   --right-ee-link <右末端 link>
+
+# 或显式指定输出路径
+python scripts/generate_curobo_robot_kinematics_yaml.py \
+  --urdf /path/to/robot.urdf \
+  --output /path/to/robot_kin.yaml
 ```
 
 - **单臂**：增加 `--ee-link <末端 link>`，此时不读左右末端参数的双臂语义。
 - **格式**：输出为根键 **`kinematics`** 的 YAML，可被 **`RobotConfig.from_dict`** 读回（与 cuRobo 约定一致）。
 - **勿用** `RobotConfig.write_config` 混入不可 YAML 序列化的 `CudaRobotModelConfig` 字段当作本用途缓存（脚本内注释有说明）。
 
+**Realman 推荐参数（来自本仓库默认约定 / 历史资产命名）**：
+
+- **`--base-link`**：`dual_rm_75b_description_platform_base_link`（平台/臂安装基座）
+- **`--left-ee-link` / `--right-ee-link`**：`panda_left_hand` / `panda_right_hand`
+
+（请以你的 URDF 实际 link 名为准；若命名不同需同步修改。）
+
 ### 3.2 封装如何加载（`cache_path` / `RobotSpec.cache_path` / `robot_config`）
 
 - **封装只做**：`yaml.safe_load` + **`RobotConfig.from_dict`**（或直接使用你传入的 **`robot_config`**）。
 - **运维**：修改 **URDF** 或 **链名** 后须 **重新运行生成脚本** 并更新路径或覆盖 YAML；否则运动学与实物不一致。
+- **默认文件位置**：与 **`DEFAULT_CUROBO_KINEMATICS_YAML`** 对齐时，团队内可统一只维护 **`assets/curobo/realman_kinematics.yaml`**，调用方不必再传 `cache_path`。
 
 ### 3.3 世界障碍 YAML（`WorldSpec.from_yaml`）
 
@@ -280,7 +392,7 @@ cuboids:
 
 ## 5. 使用样例
 
-不写 **`RobotSpec`** 时，一行即可挂上运动学：`CuroboPlanner(cache_path="/path/to/robot_kin.yaml", device="cuda:0")`，后面 **`apply_world` / `plan_dual`** 与下例相同。
+不写 **`RobotSpec`** 时：若已按 **§3.1** 把 YAML 放在包内默认路径，可用 **`CuroboPlanner(device="cuda:0")`**（依赖 **`use_curobo_cache=True` 的默认 kinematics 路径**）；否则显式 **`CuroboPlanner(cache_path="/path/to/robot_kin.yaml", device="cuda:0")`**。后面 **`apply_world` / `plan_dual`** 与下例相同。
 
 ### 5.1 最小双臂规划（显式 `RobotSpec` + 空世界）
 
@@ -350,7 +462,8 @@ out = planner.plan_single_arm(
 
 ## 6. 与仿真 / 任务集成
 
-- 本仓库 **默认评估脚本** 当前 **不内置** Isaac 侧策略；在仿真或真机中使用时，由你在 **任务节点** 中完成：**World / Pelvis / root → `base_link` 系** 的位姿变换、**关节顺序** 与 **`start_joint_positions` 对齐**，再调用 **`CuroboPlanner`**。
+- **`scripts/evaluate_vla.py`**：默认 **`--asset_root_path`** 为与扩展仓库根**同级**的 **`Benchmark`**，默认 **`--task_scene_name`** 为 **`Spawn_ms_st_dense_EnvCfg`**（与 **`pinned_eval_curobo`** 一致；布局不同时可用 CLI 覆盖）。**`--policy curobo_planner`** 时使用 **`CuroboPlannerPolicy`**，其 **`cache_path`** 默认亦为 **`DEFAULT_CUROBO_KINEMATICS_YAML`**。
+- 在其它仿真或真机任务中，由你在 **任务节点** 中完成：**World / Pelvis / root → `base_link` 系** 的位姿变换、**关节顺序** 与 **`start_joint_positions` 对齐**，再调用 **`CuroboPlanner`**（或使用 **`plan_*_world_to_world_auto`** + **`realman_state_reader`**）。
 - **仅依赖算法封装**时，可只 `import isaaclab_logistics_vla.utils.curobo_planner`，不必引用本扩展的 `evaluation` 包。
 
 ---
@@ -359,13 +472,16 @@ out = planner.plan_single_arm(
 
 | 路径 | 说明 |
 |------|------|
+| `configs/pinned_eval_curobo.py` | 团队固定：`DEFAULT_CUROBO_KINEMATICS_YAML`、评测默认资产根与任务名 |
+| `assets/curobo/` | 默认存放 **`realman_kinematics.yaml`**（首启前由生成脚本写入） |
 | `utils/curobo_planner/curobo_planner.py` | `CuroboPlanner`、`plan_dual` / `plan_single_arm` / `plan_one_ee` |
 | `utils/curobo_planner/robot_spec.py` | `RobotSpec` |
 | `utils/curobo_planner/world_spec.py` | `WorldSpec` |
 | `utils/curobo_planner/result_utils.py` | `motion_gen_batch_result_to_plan_dict`、`plan_grippers_linear`（包内亦从 `__init__` 导出） |
 | `utils/curobo_planner/example_usage.py` | 最小调用示例（需 GPU + cuRobo + 预生成 kinematics YAML） |
-| `scripts/generate_curobo_robot_kinematics_yaml.py` | **包外**：URDF → kinematics YAML |
+| `scripts/generate_curobo_robot_kinematics_yaml.py` | **包外**：URDF → kinematics YAML（`--output` 默认指向 `assets/curobo/realman_kinematics.yaml`） |
+| `scripts/evaluate_vla.py` | 评测入口；默认资产根与任务名与 **`pinned_eval_curobo`** 一致 |
 
 ---
 
-*文档版本与代码路径：`isaaclab_logistics_vla/utils/curobo_planner/`、`isaaclab_logistics_vla/scripts/generate_curobo_robot_kinematics_yaml.py`、`docs/CuRobo_API与配置约定.md`。*
+*文档版本与代码路径：`isaaclab_logistics_vla/utils/curobo_planner/`、`isaaclab_logistics_vla/configs/pinned_eval_curobo.py`、`isaaclab_logistics_vla/scripts/generate_curobo_robot_kinematics_yaml.py`、`docs/CuRobo_API与配置约定.md`。*
