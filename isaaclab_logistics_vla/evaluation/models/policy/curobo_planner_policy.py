@@ -59,6 +59,10 @@ class CuroboPlannerPolicy:
         cache_path: str = DEFAULT_CUROBO_KINEMATICS_YAML,
         apply_robot_to_curobo_frame_transform: bool = False,
         goal_delta_w: np.ndarray | None = None,
+        goal_asset_name: str | None = None,
+        goal_asset_offset_w: np.ndarray | None = None,
+        goal_asset_offset_w_left: np.ndarray | None = None,
+        goal_asset_offset_w_right: np.ndarray | None = None,
         platform_action: float = 0.5,
         debug_print: bool = True,
         debug_print_every: int = 50,
@@ -77,6 +81,23 @@ class CuroboPlannerPolicy:
             np.asarray(goal_delta_w, dtype=np.float64).reshape(3)
             if goal_delta_w is not None
             else np.array([0.05, 0.0, 0.0], dtype=np.float64)
+        )
+        # 若设置 goal_asset_name，则终点采用该资产的 world 中心点（可叠加 offset），而不是 start+delta
+        self.goal_asset_name = str(goal_asset_name) if goal_asset_name else None
+        base_off = (
+            np.asarray(goal_asset_offset_w, dtype=np.float64).reshape(3)
+            if goal_asset_offset_w is not None
+            else np.zeros((3,), dtype=np.float64)
+        )
+        self.goal_asset_offset_w_left = (
+            np.asarray(goal_asset_offset_w_left, dtype=np.float64).reshape(3)
+            if goal_asset_offset_w_left is not None
+            else base_off.copy()
+        )
+        self.goal_asset_offset_w_right = (
+            np.asarray(goal_asset_offset_w_right, dtype=np.float64).reshape(3)
+            if goal_asset_offset_w_right is not None
+            else base_off.copy()
         )
 
         self._cache = [_PlanCache() for _ in range(self.num_envs)]
@@ -160,6 +181,38 @@ class CuroboPlannerPolicy:
             "quaternion": np.asarray(start_pose["quaternion"], dtype=np.float64),
         }
 
+    def _get_rigid_object_center_w(self, env_id: int, *, asset_name: str) -> np.ndarray:
+        """从 env.scene 里读取某个刚体资产的 world 中心点（root pos）。"""
+        isaac_env = self.env.unwrapped
+        asset = isaac_env.scene[asset_name]
+        data = getattr(asset, "data", None)
+        if data is None:
+            raise AttributeError(f"资产 {asset_name!r} 没有 data 字段，无法读取位姿。")
+        if hasattr(data, "root_pos_w"):
+            p = data.root_pos_w[env_id, 0:3].detach().cpu().numpy()
+            return np.asarray(p, dtype=np.float64)
+        if hasattr(data, "root_state_w"):
+            st = data.root_state_w[env_id]
+            p = st[0:3].detach().cpu().numpy()
+            return np.asarray(p, dtype=np.float64)
+        raise AttributeError(f"资产 {asset_name!r} data 不包含 root_pos_w/root_state_w，无法读取位姿。")
+
+    def _make_goal_from_asset_center(
+        self,
+        env_id: int,
+        start_pose: Dict[str, np.ndarray],
+        *,
+        arm: str,
+    ) -> Dict[str, np.ndarray]:
+        if arm not in ("left", "right"):
+            raise ValueError(f"arm must be 'left' or 'right', got {arm!r}")
+        off = self.goal_asset_offset_w_left if arm == "left" else self.goal_asset_offset_w_right
+        p = self._get_rigid_object_center_w(env_id, asset_name=self.goal_asset_name) + off
+        return {
+            "position": np.asarray(p, dtype=np.float64),
+            "quaternion": np.asarray(start_pose["quaternion"], dtype=np.float64),
+        }
+
     def reset(self, env_ids: Optional[torch.Tensor] = None) -> None:
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
@@ -178,8 +231,14 @@ class CuroboPlannerPolicy:
                 # 从 env 读取起点（左右末端），并生成近邻目标
                 start_left = self._get_ee_pose_w(env_id, link_name="panda_left_hand")
                 start_right = self._get_ee_pose_w(env_id, link_name="panda_right_hand")
-                goal_left = self._make_goal_near_start(start_left)
-                goal_right = self._make_goal_near_start(start_right)
+                if self.goal_asset_name is not None:
+                    # 绝对位姿：对齐到某个资产中心点（例如 s_box_2）
+                    goal_left = self._make_goal_from_asset_center(env_id, start_left, arm="left")
+                    goal_right = self._make_goal_from_asset_center(env_id, start_right, arm="right")
+                else:
+                    # 相对位姿：start + delta
+                    goal_left = self._make_goal_near_start(start_left)
+                    goal_right = self._make_goal_near_start(start_right)
 
                 want_coord_debug = (
                     self.debug_print
@@ -213,6 +272,15 @@ class CuroboPlannerPolicy:
                         f" traj={'None' if traj is None else list(traj.shape)}"
                         f" solve_ms={None if solve_ms is None else round(float(solve_ms), 1)}"
                     )
+                    # 额外输出 start/goal，便于定位 IK_START_FAIL（通常是坐标系/末端 link 对齐问题）
+                    if out.get("detail", "").startswith("IK_START_FAIL"):
+                        print(
+                            "[curobo_planner_policy][start_goal]"
+                            f" start_left_p={_round_vec(start_left['position'])}"
+                            f" start_right_p={_round_vec(start_right['position'])}"
+                            f" goal_left_p={_round_vec(goal_left['position'])}"
+                            f" goal_right_p={_round_vec(goal_right['position'])}"
+                        )
                     if want_coord_debug and isinstance(out.get("_debug"), dict):
                         dbg = out["_debug"]
                         print("[curobo_planner_policy][coord] apply_frame_transform=", dbg.get("apply_robot_to_curobo_frame_transform"))

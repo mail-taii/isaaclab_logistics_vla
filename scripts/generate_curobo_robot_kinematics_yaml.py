@@ -99,10 +99,20 @@ def main() -> None:
         left_ee_link=args.left_ee_link,
         right_ee_link=args.right_ee_link,
     )
-    jl = rc.kinematics.joint_limits
-    n_j = getattr(jl, "position", jl)
-    dim = n_j.shape[-1] if hasattr(n_j, "shape") else "?"
     print(f"已写入: {args.output}")
+    # 兼容不同 cuRobo 版本：CudaRobotModelConfig 可能没有 joint_limits 字段
+    dim = "?"
+    try:
+        if hasattr(rc.kinematics, "get_joint_limits"):
+            jl = rc.kinematics.get_joint_limits()
+            n_j = getattr(jl, "position", jl)
+            dim = n_j.shape[-1] if hasattr(n_j, "shape") else "?"
+        elif hasattr(rc.kinematics, "joint_limits"):
+            jl = rc.kinematics.joint_limits
+            n_j = getattr(jl, "position", jl)
+            dim = n_j.shape[-1] if hasattr(n_j, "shape") else "?"
+    except Exception:
+        dim = "?"
     print(f"关节维数（参考）: {dim}")
 
 

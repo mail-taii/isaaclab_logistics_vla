@@ -285,7 +285,7 @@ class CuroboPlanner:
         else:
             order = ["left", "right"]
         return link_names_list, order
-
+    
     def _update_world(self) -> None:
         self.motion_gen.update_world(self.world_config)
     

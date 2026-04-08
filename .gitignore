@@ -16,3 +16,6 @@ env/
 .env
 
 env_order_info/
+
+# cuRobo kinematics YAML is generated locally
+isaaclab_logistics_vla/assets/curobo/*.yaml

@@ -8,6 +8,7 @@ import time
 class VLA_Evaluator:
     def __init__(self, env_cfg, policy='random', from_json=2):
         self.from_json = from_json
+        self.policy_name = policy
         
         #---在初始化环境之前，将参数注入配置---
         if hasattr(env_cfg.commands, "object_commands"):
@@ -28,6 +29,35 @@ class VLA_Evaluator:
             print(f"[INFO] Successfully loaded {len(self.action_trajectory)} steps from {txt_path}")
         else:
             self.action_trajectory = None
+
+        # 初始化策略（若选择 curobo_planner，则使用封装好的 cuRobo 规划作为 policy）
+        self.curobo_policy = None
+        if self.policy_name == "curobo_planner":
+            from isaaclab_logistics_vla.evaluation.models.policy import CuroboPlannerPolicy
+
+            goal_asset = os.environ.get("CUROBO_GOAL_ASSET", "s_box_2")
+            # 左右手在 world-x 方向分开（米）；默认 5cm（先保守，减少 IK 难度）
+            dx = float(os.environ.get("CUROBO_GOAL_SPLIT_X", "0.05"))
+            # 抬高目标 z（米）；默认 20cm（先到箱子上方）
+            dz = float(os.environ.get("CUROBO_GOAL_LIFT_Z", "0.20"))
+            # 坐标对齐调试 & frame transform（0/1）
+            debug_coord = os.environ.get("CUROBO_DEBUG_COORD", "").strip().lower() in ("1", "true", "yes", "on")
+            apply_tf = os.environ.get("CUROBO_APPLY_FRAME_TF", "").strip().lower() in ("1", "true", "yes", "on")
+            self.curobo_policy = CuroboPlannerPolicy(
+                self.env,
+                device=str(getattr(self.env, "device", "cuda:0")),
+                apply_robot_to_curobo_frame_transform=apply_tf,
+                goal_asset_name=goal_asset,
+                goal_asset_offset_w_left=np.array([+dx, 0.0, +dz], dtype=np.float64),
+                goal_asset_offset_w_right=np.array([-dx, 0.0, +dz], dtype=np.float64),
+                debug_print=True,
+                debug_print_every=1 if debug_coord else 50,
+                debug_coordinates=debug_coord,
+            )
+            print(
+                f"[Evaluator] 已启用 curobo_planner：goal_asset={goal_asset!r} split_x={dx}m lift_z={dz}m"
+                f" apply_frame_tf={apply_tf} debug_coord={debug_coord}"
+            )
 
     def _load_and_process_txt(self, file_path):
         """
@@ -70,6 +100,9 @@ class VLA_Evaluator:
 
 
     def generate_action(self, obs):
+        if self.curobo_policy is not None:
+            return self.curobo_policy.act(obs)
+
         actions = torch.zeros((self.env.num_envs, 17), device=self.env.device)
 
         actions[:, 16] = 0.5 
@@ -103,22 +136,11 @@ class VLA_Evaluator:
         print(f"[INFO] Evaluation started. Mode: {self.from_json}")
 
         while True:
-            with torch.inference_mode():
+            # 注意：cuRobo 的 IK/规划内部会对缓冲区做 inplace 更新；
+            # 在 torch.inference_mode() 下会触发 RuntimeError（inference tensor 不允许 inplace）。
+            # 这里统一使用 no_grad，既省显存又兼容 cuRobo。
+            with torch.no_grad():
                 actions = self.generate_action(None)
                 obs, rew, terminated, truncated, info = self.env.step(actions)
                 #Atime.sleep(1)
-                if i%100==0 or i<10:
-                    isaac_env = self.env.unwrapped
-
-                    robot_asset = isaac_env.scene.articulations["robot"]
-                    
-                
-                    default_state_tensor = robot_asset.data.root_state_w
-                    
-                    print("\n" + "="*50)
-                    print("Default Root State of 'robot' Asset:")
-                    print(f"Shape: {default_state_tensor.shape}")
-                    print(f"Data:\n{default_state_tensor[:, 0:3]}")
-                    print(f"Reward :\n{rew}")
-                    print("="*50 + "\n")
             
