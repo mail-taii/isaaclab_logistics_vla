@@ -730,6 +730,7 @@ class CuroboPlanner:
         root_quat_wxyz: np.ndarray,
         platform_joint_value: float = 0.0,
         arm_base_offset_in_root_xyz: Tuple[float, float, float] = (0.0, -0.11663, 0.271),
+        base_pose_world: Optional[Dict[str, np.ndarray]] = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Realman 一键：世界系目标 → base_link 系 → `plan_dual`。
@@ -738,12 +739,16 @@ class CuroboPlanner:
             goal_poses_world: 与 `plan_dual` 同结构，但 position/quaternion 在 **World** 系下。
             root_pos_w/root_quat_wxyz/platform_joint_value: 用于估算 base_link 在 world 下位姿。
         """
-        base_pos_w, base_quat = self._realman_base_pose_w(
-            root_pos_w=root_pos_w,
-            root_quat_wxyz=root_quat_wxyz,
-            platform_joint_value=platform_joint_value,
-            arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
-        )
+        if base_pose_world is not None:
+            base_pos_w = np.asarray(base_pose_world["position"], dtype=np.float64).reshape(3)
+            base_quat = np.asarray(base_pose_world["quaternion"], dtype=np.float64).reshape(4)
+        else:
+            base_pos_w, base_quat = self._realman_base_pose_w(
+                root_pos_w=root_pos_w,
+                root_quat_wxyz=root_quat_wxyz,
+                platform_joint_value=platform_joint_value,
+                arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
+            )
         goal_poses_b: Dict[str, Dict[str, np.ndarray]] = {}
         for arm in ("left", "right"):
             g = goal_poses_world[arm]
@@ -799,14 +804,19 @@ class CuroboPlanner:
         root_quat_wxyz: np.ndarray,
         platform_joint_value: float = 0.0,
         arm_base_offset_in_root_xyz: Tuple[float, float, float] = (0.0, -0.11663, 0.271),
+        base_pose_world: Optional[Dict[str, np.ndarray]] = None,
     ) -> None:
         """Realman 一键：世界系障碍 → base_link 系 → `set_world`。"""
-        base_pos_w, base_quat = self._realman_base_pose_w(
-            root_pos_w=root_pos_w,
-            root_quat_wxyz=root_quat_wxyz,
-            platform_joint_value=platform_joint_value,
-            arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
-        )
+        if base_pose_world is not None:
+            base_pos_w = np.asarray(base_pose_world["position"], dtype=np.float64).reshape(3)
+            base_quat = np.asarray(base_pose_world["quaternion"], dtype=np.float64).reshape(4)
+        else:
+            base_pos_w, base_quat = self._realman_base_pose_w(
+                root_pos_w=root_pos_w,
+                root_quat_wxyz=root_quat_wxyz,
+                platform_joint_value=platform_joint_value,
+                arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
+            )
         obs_b: List[Dict[str, np.ndarray]] = []
         for o in obstacles_world:
             pos = np.asarray(o["position"], dtype=np.float64)
@@ -843,10 +853,15 @@ class CuroboPlanner:
 
         - 桌子位置来自 `tasks/base_scene_cfg.py` 的 `e_table`（pos=(0.9, 3.5, 0), scale=0.8）。
         - 6 个箱子位置来自 `s_box_1..3` / `t_box_1..3` 的 init_state。
-        - cuboid 尺寸采用历史 cuRobo 配置的近似：箱子 dims=(0.56,0.36,0.23)，桌子 dims=(1.2,2.0,0.75)。
+        - 箱子尺寸来自 `utils/constant.py` 的 `WORK_BOX_PARAMS`（与资产 `env/Box.usd` 对齐）。
+        - 桌子使用多 cuboid 近似（桌面 + 4 条腿），尺寸为经验值并考虑 `base_scene_cfg.py` 中的 scale=0.8。
         """
+        # 注意：这里仅构造 cuRobo 的碰撞世界（用于 IK/规划碰撞），不影响 Isaac 场景里的真实资产。
+        from isaaclab_logistics_vla.utils.constant import WORK_BOX_PARAMS
+
         # world positions (meters) from BaseOrderSceneCfg defaults:
         table_pos_w = np.array([0.9, 3.5, 0.0], dtype=np.float64)
+        table_scale = 0.8  # from tasks/base_scene_cfg.py e_table scale
         box_pos_w = {
             "s_box_1": (1.57989, 1.33474, 0.750),
             "s_box_2": (1.025, 1.33614, 0.725),
@@ -857,21 +872,97 @@ class CuroboPlanner:
         }
 
         obstacles_world: List[Dict[str, np.ndarray]] = []
+        # ---- table (multi-cuboid approximation) ----
+        # tabletop roughly 1.2 x 2.0, thickness small; legs at 4 corners
+        table_xy = np.array([1.2, 2.0], dtype=np.float64) * table_scale
+        top_thickness = 0.06 * table_scale
+        leg_thickness = 0.10 * table_scale
+        leg_height = 0.75 * table_scale
+        # tabletop center (table_pos_w is asset origin; we treat it as tabletop center on ground plane)
+        tabletop_center = table_pos_w + np.array([0.0, 0.0, leg_height + 0.5 * top_thickness], dtype=np.float64)
         obstacles_world.append(
             {
-                "name": "table",
-                "position": table_pos_w,
+                "name": "table_top",
+                "position": tabletop_center,
                 "quaternion": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-                "dims": np.array([1.2, 2.0, 0.75], dtype=np.float64),
+                "dims": np.array([table_xy[0], table_xy[1], top_thickness], dtype=np.float64),
             }
         )
-        for name, p in box_pos_w.items():
+        # legs: centers at +/- half extents in x/y, with some inset so they remain under the tabletop
+        inset_x = 0.5 * leg_thickness
+        inset_y = 0.5 * leg_thickness
+        leg_offsets = [
+            (+0.5 * table_xy[0] - inset_x, +0.5 * table_xy[1] - inset_y),
+            (+0.5 * table_xy[0] - inset_x, -0.5 * table_xy[1] + inset_y),
+            (-0.5 * table_xy[0] + inset_x, +0.5 * table_xy[1] - inset_y),
+            (-0.5 * table_xy[0] + inset_x, -0.5 * table_xy[1] + inset_y),
+        ]
+        for k, (ox, oy) in enumerate(leg_offsets):
             obstacles_world.append(
                 {
-                    "name": name,
-                    "position": np.array(p, dtype=np.float64),
+                    "name": f"table_leg_{k}",
+                    "position": table_pos_w + np.array([ox, oy, 0.5 * leg_height], dtype=np.float64),
                     "quaternion": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
-                    "dims": np.array([0.56, 0.36, 0.23], dtype=np.float64),
+                    "dims": np.array([leg_thickness, leg_thickness, leg_height], dtype=np.float64),
+                }
+            )
+
+        # ---- work boxes (use asset-aligned dims) ----
+        box_dims = np.array(
+            [WORK_BOX_PARAMS["X_LENGTH"], WORK_BOX_PARAMS["Y_LENGTH"], WORK_BOX_PARAMS["Z_LENGTH"]],
+            dtype=np.float64,
+        )
+        # 使用“空心开口箱”（上方开口）：底板 + 四侧壁（让手臂可伸入箱内空间）
+        # 约定：box_pos_w 给的是箱体中心点（world），因此各板件按中心点偏移拼装。
+        t_wall = 0.02  # meters
+        t_bottom = 0.02  # meters
+        x_len, y_len, z_len = box_dims.tolist()
+        inner_x = max(0.0, x_len - 2.0 * t_wall)
+        inner_y = max(0.0, y_len - 2.0 * t_wall)
+        for name, p in box_pos_w.items():
+            c = np.array(p, dtype=np.float64)
+            q = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+            # bottom slab
+            obstacles_world.append(
+                {
+                    "name": f"{name}_bottom",
+                    "position": c + np.array([0.0, 0.0, -0.5 * z_len + 0.5 * t_bottom], dtype=np.float64),
+                    "quaternion": q,
+                    "dims": np.array([x_len, y_len, t_bottom], dtype=np.float64),
+                }
+            )
+            # side walls (x +/-)
+            obstacles_world.append(
+                {
+                    "name": f"{name}_wall_xp",
+                    "position": c + np.array([+0.5 * x_len - 0.5 * t_wall, 0.0, 0.0], dtype=np.float64),
+                    "quaternion": q,
+                    "dims": np.array([t_wall, y_len, z_len], dtype=np.float64),
+                }
+            )
+            obstacles_world.append(
+                {
+                    "name": f"{name}_wall_xn",
+                    "position": c + np.array([-0.5 * x_len + 0.5 * t_wall, 0.0, 0.0], dtype=np.float64),
+                    "quaternion": q,
+                    "dims": np.array([t_wall, y_len, z_len], dtype=np.float64),
+                }
+            )
+            # side walls (y +/-)
+            obstacles_world.append(
+                {
+                    "name": f"{name}_wall_yp",
+                    "position": c + np.array([0.0, +0.5 * y_len - 0.5 * t_wall, 0.0], dtype=np.float64),
+                    "quaternion": q,
+                    "dims": np.array([inner_x, t_wall, z_len], dtype=np.float64),
+                }
+            )
+            obstacles_world.append(
+                {
+                    "name": f"{name}_wall_yn",
+                    "position": c + np.array([0.0, -0.5 * y_len + 0.5 * t_wall, 0.0], dtype=np.float64),
+                    "quaternion": q,
+                    "dims": np.array([inner_x, t_wall, z_len], dtype=np.float64),
                 }
             )
 
@@ -892,6 +983,7 @@ class CuroboPlanner:
         root_quat_wxyz: np.ndarray,
         platform_joint_value: float = 0.0,
         arm_base_offset_in_root_xyz: Tuple[float, float, float] = (0.0, -0.11663, 0.271),
+        base_pose_world: Optional[Dict[str, np.ndarray]] = None,
         set_default_world: bool = True,
         ik_seed_q: Optional[np.ndarray] = None,
         ik_num_seeds: Optional[int] = None,
@@ -910,12 +1002,16 @@ class CuroboPlanner:
             )
 
         # 1) World → base_link
-        base_pos_w, base_quat = self._realman_base_pose_w(
-            root_pos_w=root_pos_w,
-            root_quat_wxyz=root_quat_wxyz,
-            platform_joint_value=platform_joint_value,
-            arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
-        )
+        if base_pose_world is not None:
+            base_pos_w = np.asarray(base_pose_world["position"], dtype=np.float64).reshape(3)
+            base_quat = np.asarray(base_pose_world["quaternion"], dtype=np.float64).reshape(4)
+        else:
+            base_pos_w, base_quat = self._realman_base_pose_w(
+                root_pos_w=root_pos_w,
+                root_quat_wxyz=root_quat_wxyz,
+                platform_joint_value=platform_joint_value,
+                arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
+            )
         start_p_b, start_q_b = world_pose_to_base_pose(
             pos_w=np.asarray(start_pose_world["position"], dtype=np.float64),
             quat_wxyz=np.asarray(start_pose_world["quaternion"], dtype=np.float64),
@@ -928,6 +1024,10 @@ class CuroboPlanner:
             base_pos_w=base_pos_w,
             base_quat_wxyz=base_quat,
         )
+        # 坐标轴约定对齐：Realman/Isaac 里常见 y 朝前，而 cuRobo 规划默认 x 朝前；
+        # 若开启 apply_frame_transform，则对 IK/规划使用同一套变换后的 base_link 坐标。
+        start_p_b, start_q_b = self._transform_pose(start_p_b, start_q_b)
+        goal_p_b, goal_q_b = self._transform_pose(goal_p_b, goal_q_b)
 
         # 2) IK for start
         ik_out = self.ik_one_ee(
@@ -962,6 +1062,7 @@ class CuroboPlanner:
         root_quat_wxyz: np.ndarray,
         platform_joint_value: float = 0.0,
         arm_base_offset_in_root_xyz: Tuple[float, float, float] = (0.0, -0.11663, 0.271),
+        base_pose_world: Optional[Dict[str, np.ndarray]] = None,
         set_default_world: bool = True,
         ik_seed_q: Optional[np.ndarray] = None,
         ik_num_seeds: Optional[int] = None,
@@ -987,20 +1088,25 @@ class CuroboPlanner:
                 arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
             )
 
-        base_pos_w, base_quat = self._realman_base_pose_w(
-            root_pos_w=root_pos_w,
-            root_quat_wxyz=root_quat_wxyz,
-            platform_joint_value=platform_joint_value,
-            arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
-        )
+        if base_pose_world is not None:
+            base_pos_w = np.asarray(base_pose_world["position"], dtype=np.float64).reshape(3)
+            base_quat = np.asarray(base_pose_world["quaternion"], dtype=np.float64).reshape(4)
+        else:
+            base_pos_w, base_quat = self._realman_base_pose_w(
+                root_pos_w=root_pos_w,
+                root_quat_wxyz=root_quat_wxyz,
+                platform_joint_value=platform_joint_value,
+                arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
+            )
 
         def _to_b(pose_w: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
-            return world_pose_to_base_pose(
+            p_b, q_b = world_pose_to_base_pose(
                 pos_w=np.asarray(pose_w["position"], dtype=np.float64),
                 quat_wxyz=np.asarray(pose_w["quaternion"], dtype=np.float64),
                 base_pos_w=base_pos_w,
                 base_quat_wxyz=base_quat,
             )
+            return self._transform_pose(p_b, q_b)
 
         start_b: Dict[str, Dict[str, np.ndarray]] = {}
         goal_b: Dict[str, Dict[str, np.ndarray]] = {}
@@ -1054,6 +1160,7 @@ class CuroboPlanner:
                 "arm_base_offset_in_root_xyz": [float(x) for x in arm_base_offset_in_root_xyz],
                 "base_link_estimated_pos_w": _round_list(base_pos_w),
                 "base_link_estimated_quat_wxyz": _round_list(base_quat),
+                "base_pose_source": "sim_platform_base_link" if base_pose_world is not None else "root_plus_offset",
                 "kinematics_link_names": [str(x) for x in link_names_list],
                 "motion_gen_arm_order": list(arm_order),
                 "start_in_base_link_frame": {
@@ -1231,6 +1338,7 @@ class CuroboPlanner:
         start_poses_world: Dict[str, Dict[str, np.ndarray]],
         goal_poses_world: Dict[str, Dict[str, np.ndarray]],
         arm_base_offset_in_root_xyz: Tuple[float, float, float] = (0.0, -0.11663, 0.271),
+        base_pose_world: Optional[Dict[str, np.ndarray]] = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """自动读取 Realman 状态：双臂 World 系起点/终点（位姿）→ IK → 规划。"""
@@ -1242,6 +1350,7 @@ class CuroboPlanner:
             root_quat_wxyz=st.root_quat_wxyz,
             platform_joint_value=st.platform_joint_value,
             arm_base_offset_in_root_xyz=arm_base_offset_in_root_xyz,
+            base_pose_world=base_pose_world,
             **kwargs,
         )
 

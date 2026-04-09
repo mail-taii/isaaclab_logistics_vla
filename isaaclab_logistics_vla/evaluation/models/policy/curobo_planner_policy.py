@@ -9,10 +9,20 @@ import torch
 
 from isaaclab_logistics_vla.configs.pinned_eval_curobo import DEFAULT_CUROBO_KINEMATICS_YAML
 from isaaclab_logistics_vla.utils.curobo_planner import CuroboPlanner, RealmanRobotState
+import os
 
 
 def _round_vec(v: np.ndarray, decimals: int = 4) -> List[float]:
     return np.asarray(v, dtype=np.float64).reshape(-1).round(decimals).tolist()
+
+
+def _quat_to_wxyz(q: np.ndarray, *, assume_xyzw: bool) -> np.ndarray:
+    q = np.asarray(q, dtype=np.float64).reshape(4)
+    if assume_xyzw:
+        q = np.array([q[3], q[0], q[1], q[2]], dtype=np.float64)
+    # normalize for numerical safety
+    q = q / (np.linalg.norm(q) + 1e-12)
+    return q
 
 
 def _angle_between_quats_wxyz_rad(q1: np.ndarray, q2: np.ndarray) -> float:
@@ -101,25 +111,54 @@ class CuroboPlannerPolicy:
         )
 
         self._cache = [_PlanCache() for _ in range(self.num_envs)]
+        # Isaac Sim/IsaacLab 的四元数约定可能是 xyzw；cuRobo 期望 wxyz。
+        # 用环境变量控制：CUROBO_ASSUME_SIM_QUAT_XYZW=1 时做 xyzw->wxyz 转换。
+        self._assume_sim_quat_xyzw = os.environ.get("CUROBO_ASSUME_SIM_QUAT_XYZW", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        # 有些场景下 Isaac 的 articulation root_state_w 已经对应到 cuRobo kinematics 的 base_link；
+        # 此时再叠加 URDF 的 arm_base_offset 会导致 base 对齐偏移（表现为 IK_START_FAIL）。
+        # 通过环境变量强制将 offset 置零：CUROBO_ZERO_ARM_BASE_OFFSET=1
+        self._zero_arm_base_offset = os.environ.get("CUROBO_ZERO_ARM_BASE_OFFSET", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        # 默认直接用仿真当前关节角作为 q_start，避免“起点 IK”失败（CUROBO_USE_SIM_QSTART=0 可关闭）
+        self._use_sim_qstart = os.environ.get("CUROBO_USE_SIM_QSTART", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
+        # planner 内部会通过 realman_state_reader 读取 root/platform 状态；
+        # 对于多环境并行（num_envs>1），需要在每次 plan 前设置当前 env_id。
+        self._reader_env_id: int = 0
 
         def _reader() -> RealmanRobotState:
             isaac_env = self.env.unwrapped
             robot = isaac_env.scene.articulations["robot"]
             root = robot.data.root_state_w  # (N, 13) or (N, 7+)
-            root_pos = root[:, 0:3].detach().cpu().numpy()
-            root_quat = root[:, 3:7].detach().cpu().numpy()
+            env_id = int(self._reader_env_id)
+            root_pos = root[env_id, 0:3].detach().cpu().numpy()
+            root_quat = root[env_id, 3:7].detach().cpu().numpy()
+            root_quat_wxyz = _quat_to_wxyz(root_quat, assume_xyzw=self._assume_sim_quat_xyzw)
             # platform_joint 可选：找不到就当 0
             platform_val = 0.0
             try:
                 jnames = list(robot.data.joint_names)
                 if "platform_joint" in jnames:
                     jidx = jnames.index("platform_joint")
-                    platform_val = float(robot.data.joint_pos[0, jidx].detach().cpu().item())
+                    platform_val = float(robot.data.joint_pos[env_id, jidx].detach().cpu().item())
             except Exception:
                 platform_val = 0.0
             return RealmanRobotState(
-                root_pos_w=root_pos[0],
-                root_quat_wxyz=root_quat[0],
+                root_pos_w=np.asarray(root_pos, dtype=np.float64),
+                root_quat_wxyz=np.asarray(root_quat_wxyz, dtype=np.float64),
                 platform_joint_value=platform_val,
             )
 
@@ -160,7 +199,8 @@ class CuroboPlannerPolicy:
         pose = st[env_id, idx]
         pos = pose[0:3].detach().cpu().numpy()
         quat = pose[3:7].detach().cpu().numpy()
-        return {"position": np.asarray(pos, dtype=np.float64), "quaternion": np.asarray(quat, dtype=np.float64)}
+        quat_wxyz = _quat_to_wxyz(quat, assume_xyzw=self._assume_sim_quat_xyzw)
+        return {"position": np.asarray(pos, dtype=np.float64), "quaternion": quat_wxyz}
 
     def _get_ee_pose_w(self, env_id: int, *, link_name: str) -> Dict[str, np.ndarray]:
         isaac_env = self.env.unwrapped
@@ -173,7 +213,27 @@ class CuroboPlannerPolicy:
         pose = st[env_id, idx]
         pos = pose[0:3].detach().cpu().numpy()
         quat = pose[3:7].detach().cpu().numpy()
-        return {"position": np.asarray(pos, dtype=np.float64), "quaternion": np.asarray(quat, dtype=np.float64)}
+        quat_wxyz = _quat_to_wxyz(quat, assume_xyzw=self._assume_sim_quat_xyzw)
+        return {"position": np.asarray(pos, dtype=np.float64), "quaternion": quat_wxyz}
+
+    def _get_dual_arm_seed_q_lr(self, env_id: int) -> Optional[np.ndarray]:
+        """从仿真读取当前双臂关节角，作为 cuRobo IK seed（left7+right7, float32）。"""
+        try:
+            isaac_env = self.env.unwrapped
+            robot = isaac_env.scene.articulations["robot"]
+            jnames = list(robot.data.joint_names)
+            jpos = robot.data.joint_pos[env_id].detach().float().cpu().numpy()
+            # 常见命名：l_joint1..7 + r_joint1..7
+            want = [f"l_joint{i}" for i in range(1, 8)] + [f"r_joint{i}" for i in range(1, 8)]
+            idx = []
+            for n in want:
+                if n not in jnames:
+                    return None
+                idx.append(jnames.index(n))
+            q = jpos[np.asarray(idx, dtype=np.int64)]
+            return np.asarray(q, dtype=np.float32).reshape(14)
+        except Exception:
+            return None
 
     def _make_goal_near_start(self, start_pose: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         return {
@@ -228,9 +288,19 @@ class CuroboPlannerPolicy:
         for env_id in range(self.num_envs):
             cache = self._cache[env_id]
             if cache.traj is None or cache.step >= cache.traj.shape[0]:
+                # ensure planner reads state for this env
+                self._reader_env_id = int(env_id)
                 # 从 env 读取起点（左右末端），并生成近邻目标
                 start_left = self._get_ee_pose_w(env_id, link_name="panda_left_hand")
                 start_right = self._get_ee_pose_w(env_id, link_name="panda_right_hand")
+                # 直接从仿真读取 platform_base_link 的 world 位姿当作 cuRobo base（优先于 root+offset 推导）
+                base_pose_w = self._get_body_pose_w(
+                    env_id,
+                    body_name_candidates=(
+                        "dual_rm_75b_description_platform_base_link",
+                        "platform_base_link",
+                    ),
+                )
                 if self.goal_asset_name is not None:
                     # 绝对位姿：对齐到某个资产中心点（例如 s_box_2）
                     goal_left = self._make_goal_from_asset_center(env_id, start_left, arm="left")
@@ -245,18 +315,61 @@ class CuroboPlannerPolicy:
                     and self.debug_coordinates
                     and (self._global_step % max(1, self.debug_print_every) == 0)
                 )
-                out = self.planner.plan_dual_world_to_world_auto(
-                    start_poses_world={"left": start_left, "right": start_right},
-                    goal_poses_world={"left": goal_left, "right": goal_right},
-                    # 先关掉默认障碍（桌子+箱子），用来验证 IK_FAIL 是否由碰撞/障碍约束导致。
-                    set_default_world=False,
-                    max_attempts=3,
-                    timeout=1.0,
-                    # cuRobo 要求 graph_search 与 opt 至少启用一个；这里启用 opt，关闭 graph_search，避免 batch graph 限制。
-                    enable_graph=False,
-                    enable_opt=True,
-                    debug_coordinate_check=want_coord_debug,
-                )
+                if self._use_sim_qstart:
+                    q_start = self._get_dual_arm_seed_q_lr(env_id)
+                    if q_start is None:
+                        # fallback to start-IK path
+                        out = self.planner.plan_dual_world_to_world_auto(
+                            start_poses_world={"left": start_left, "right": start_right},
+                            goal_poses_world={"left": goal_left, "right": goal_right},
+                            base_pose_world=base_pose_w,
+                            arm_base_offset_in_root_xyz=(0.0, 0.0, 0.0)
+                            if self._zero_arm_base_offset
+                            else (0.0, -0.11663, 0.271),
+                            set_default_world=False,
+                            ik_seed_q=None,
+                            max_attempts=3,
+                            timeout=1.0,
+                            enable_graph=False,
+                            enable_opt=True,
+                            debug_coordinate_check=want_coord_debug,
+                        )
+                    else:
+                        # read robot state (root/platform) for completeness; base_pose_world drives the transform
+                        st = self.planner._read_realman_state()
+                        out = self.planner.plan_dual_from_world(
+                            q_start,
+                            {"left": goal_left, "right": goal_right},
+                            root_pos_w=st.root_pos_w,
+                            root_quat_wxyz=st.root_quat_wxyz,
+                            platform_joint_value=st.platform_joint_value,
+                            arm_base_offset_in_root_xyz=(0.0, 0.0, 0.0)
+                            if self._zero_arm_base_offset
+                            else (0.0, -0.11663, 0.271),
+                            base_pose_world=base_pose_w,
+                            max_attempts=3,
+                            timeout=1.0,
+                            enable_graph=False,
+                            enable_opt=True,
+                        )
+                        # align output schema with world_to_world path
+                        out["ik"] = {"success": True, "detail": "q_start_from_sim", "q": q_start}
+                else:
+                    out = self.planner.plan_dual_world_to_world_auto(
+                        start_poses_world={"left": start_left, "right": start_right},
+                        goal_poses_world={"left": goal_left, "right": goal_right},
+                        base_pose_world=base_pose_w,
+                        arm_base_offset_in_root_xyz=(0.0, 0.0, 0.0)
+                        if self._zero_arm_base_offset
+                        else (0.0, -0.11663, 0.271),
+                        set_default_world=False,
+                        ik_seed_q=self._get_dual_arm_seed_q_lr(env_id),
+                        max_attempts=3,
+                        timeout=1.0,
+                        enable_graph=False,
+                        enable_opt=True,
+                        debug_coordinate_check=want_coord_debug,
+                    )
                 if self.debug_print and (self._global_step % max(1, self.debug_print_every) == 0):
                     ik = out.get("ik") or {}
                     traj = out.get("position")
@@ -280,6 +393,13 @@ class CuroboPlannerPolicy:
                             f" start_right_p={_round_vec(start_right['position'])}"
                             f" goal_left_p={_round_vec(goal_left['position'])}"
                             f" goal_right_p={_round_vec(goal_right['position'])}"
+                        )
+                        print(
+                            "[curobo_planner_policy][start_goal_quat]"
+                            f" start_left_q={_round_vec(start_left['quaternion'], decimals=4)}"
+                            f" start_right_q={_round_vec(start_right['quaternion'], decimals=4)}"
+                            f" goal_left_q={_round_vec(goal_left['quaternion'], decimals=4)}"
+                            f" goal_right_q={_round_vec(goal_right['quaternion'], decimals=4)}"
                         )
                     if want_coord_debug and isinstance(out.get("_debug"), dict):
                         dbg = out["_debug"]
