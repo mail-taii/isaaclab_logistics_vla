@@ -18,4 +18,8 @@ def create_vlm_backend(name: str, **kwargs: Any) -> VlmBackend:
         from isaaclab_logistics_vla.agent.anthropic_volc_backend import VolcArkAnthropicBackend
 
         return VolcArkAnthropicBackend(test_describe=test_describe, test_plan=test_plan, **kw)
-    raise ValueError(f"unknown vlm backend: {name!r}. Supported: dummy, volc_ark")
+    if n in ("openai_compat", "openai", "openai-compatible", "openai_compatible"):
+        from isaaclab_logistics_vla.agent.openai_compat_backend import OpenAICompatBackend
+
+        return OpenAICompatBackend(**kw)
+    raise ValueError(f"unknown vlm backend: {name!r}. Supported: dummy, volc_ark, openai_compat")

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from isaaclab_logistics_vla.agent.json_parsing import parse_json_object_loose
-from isaaclab_logistics_vla.agent.tools import ToolManager
+from .tools import ToolManager
 from isaaclab_logistics_vla.agent.vlm_backend import Message, VlmBackend, VlmToolSchema
 
 
@@ -104,6 +104,15 @@ class VlmToolUseRunner:
         except Exception:
             # tracing must not break evaluation loop
             return
+
+    def _feedback_invalid_call(self, error: str, detail: Dict[str, Any] | str | None = None) -> None:
+        """把校验失败原因写回对话历史，避免模型重复犯错直到 max_steps。"""
+        payload: Dict[str, Any] = {"error": str(error)}
+        if detail is not None:
+            payload["detail"] = detail
+        # Use a tool-role message so it is clearly "feedback from the environment".
+        self.messages.append({"role": "tool", "name": "validator", "content": payload})
+        self._trace("validator_feedback", payload)
 
     def reset(self, instruction: str) -> None:
         self.messages = [
@@ -284,4 +293,3 @@ class VlmToolUseRunner:
             "error": "expected tool_name or non-empty scene_description or done",
             "data": data,
         }
-

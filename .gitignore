@@ -11,6 +11,10 @@ Thumbs.db       # Windows 系统特有
 logs/
 env_order_info/
 
+# Trace artifacts (keep out of git)
+traces/
+trace_run_*.jsonl
+
 venv/
 env/
 .env

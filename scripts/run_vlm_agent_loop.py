@@ -123,8 +123,8 @@ def main():
         "--backend",
         type=str,
         default="dummy",
-        choices=["dummy", "volc_ark"],
-        help="dummy=本地假模型；volc_ark=火山 Ark Coding（Anthropic 兼容，需 pip install anthropic 与 API Key）",
+        choices=["dummy", "volc_ark", "openai_compat"],
+        help="dummy=本地假模型；volc_ark=火山 Ark Coding（Anthropic 兼容）；openai_compat=OpenAI 风格 Chat Completions 兼容 API。",
     )
     parser.add_argument(
         "--volc_api_key",
@@ -142,7 +142,19 @@ def main():
         "--vlm_model",
         type=str,
         default="",
-        help="模型名，默认 ark-code-latest",
+        help="模型名（不同 backend 默认值不同）。",
+    )
+    parser.add_argument(
+        "--openai_api_key",
+        type=str,
+        default="",
+        help="openai_compat 后端的 API Key（优先级高于 OPENAI_API_KEY 环境变量）。",
+    )
+    parser.add_argument(
+        "--openai_base_url",
+        type=str,
+        default="",
+        help="openai_compat 后端 base_url（例如 https://api.openai.com/v1 或你的兼容网关）。",
     )
     parser.add_argument("--out_json", type=str, default="", help="可选：把运行结果写入该 JSON 文件路径。")
     parser.add_argument(
@@ -413,6 +425,11 @@ def main():
         backend_kw["base_url"] = args_cli.anthropic_base_url.strip()
     if args_cli.vlm_model.strip():
         backend_kw["model"] = args_cli.vlm_model.strip()
+    if args_cli.backend == "openai_compat":
+        if args_cli.openai_api_key.strip():
+            backend_kw["api_key"] = args_cli.openai_api_key.strip()
+        if args_cli.openai_base_url.strip():
+            backend_kw["base_url"] = args_cli.openai_base_url.strip()
 
     backend = create_vlm_backend(args_cli.backend, test_mode="", **backend_kw)
     runner = VlmToolUseRunner(

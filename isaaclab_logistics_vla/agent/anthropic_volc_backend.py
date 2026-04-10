@@ -156,6 +156,10 @@ class VolcArkAnthropicBackend(VlmBackend):
         self._client = _anthropic.Anthropic(api_key=key, base_url=self._base_url)
         self._test_describe = bool(test_describe)
         self._test_plan = bool(test_plan)
+        # Some endpoints/models behind Anthropic-compatible gateways are text-only.
+        # If image input is rejected once, disable image blocks for subsequent turns.
+        self._disable_image_input = False
+        self._warned_image_not_supported = False
 
     @property
     def model_name(self) -> str:
@@ -177,20 +181,21 @@ class VolcArkAnthropicBackend(VlmBackend):
         system_text = "\n\n".join(system_parts) if system_parts else "You are a helpful assistant."
 
         api_messages = _history_to_anthropic_messages(tail)
-        jpeg_b64 = _rgb_uint8_to_jpeg_b64(image_rgb_uint8)
         final_blocks: List[Dict[str, Any]] = []
         if instruction_text.strip():
             final_blocks.append({"type": "text", "text": instruction_text.strip()})
-        final_blocks.append(
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": jpeg_b64,
-                },
-            }
-        )
+        if not self._disable_image_input:
+            jpeg_b64 = _rgb_uint8_to_jpeg_b64(image_rgb_uint8)
+            final_blocks.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": jpeg_b64,
+                    },
+                }
+            )
         if self._test_plan:
             json_help = (
                 "上图为当前仿真环境的顶视相机 RGB 画面（与 tool get_topview_image 所见一致）。\n"
@@ -223,11 +228,37 @@ class VolcArkAnthropicBackend(VlmBackend):
         final_blocks.append({"type": "text", "text": json_help})
         api_messages.append({"role": "user", "content": final_blocks})
 
-        msg = self._client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            temperature=self._temperature,
-            system=system_text,
-            messages=api_messages,
-        )
+        try:
+            msg = self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                temperature=self._temperature,
+                system=system_text,
+                messages=api_messages,
+            )
+        except Exception as e:
+            s = str(e)
+            image_not_supported = (
+                (not self._disable_image_input)
+                and ("Model do not support image input" in s or "param': 'image_url'" in s or 'param": "image_url"' in s)
+            )
+            if not image_not_supported:
+                raise
+            self._disable_image_input = True
+            if not self._warned_image_not_supported:
+                print(
+                    "[Warn] Current model rejects image input; switching this backend to text-only mode. "
+                    "Set --vlm_model to a vision-capable model to re-enable direct image conditioning."
+                )
+                self._warned_image_not_supported = True
+            # Retry once immediately without image block.
+            final_blocks_no_image = [b for b in final_blocks if b.get("type") != "image"]
+            api_messages[-1] = {"role": "user", "content": final_blocks_no_image}
+            msg = self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                temperature=self._temperature,
+                system=system_text,
+                messages=api_messages,
+            )
         return _extract_text_from_message(msg)

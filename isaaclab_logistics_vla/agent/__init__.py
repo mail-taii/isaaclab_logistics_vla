@@ -7,7 +7,7 @@
 from .vlm_backend import VlmBackend, DummyBackend  # noqa: F401
 from .runner import VlmToolUseRunner  # noqa: F401
 from .anthropic_volc_backend import VolcArkAnthropicBackend  # noqa: F401
+from .openai_compat_backend import OpenAICompatBackend  # noqa: F401
 from .backend_registry import create_vlm_backend  # noqa: F401
 from .instruction_provider import InstructionProvider, InstructionSpec, VirtualInstructionProvider  # noqa: F401
 from .task_system import TaskManager, Task  # noqa: F401
-

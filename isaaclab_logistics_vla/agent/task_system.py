@@ -212,6 +212,16 @@ def format_task_board(tasks: List[Dict[str, Any]] | List[Task]) -> str:
         else:
             other.append(t)
 
+    def _status_mark(st: str) -> str:
+        if st == "completed":
+            return "✓"
+        if st == "in_progress":
+            return "▶"
+        if st == "cancelled":
+            return "✗"
+        # pending / unknown
+        return " "
+
     def _fmt_list(title: str, items: List[Dict[str, Any]]) -> List[str]:
         lines = [f"{title} ({len(items)}):"]
         for t in items:
@@ -219,13 +229,14 @@ def format_task_board(tasks: List[Dict[str, Any]] | List[Task]) -> str:
             subj = str(t.get("subject", "")).strip()
             owner = str(t.get("owner", "")).strip()
             bb = t.get("blockedBy", []) or []
+            st = str(t.get("status", "pending"))
             extra = []
             if owner:
                 extra.append(f"owner={owner}")
             if bb:
                 extra.append(f"blockedBy={bb}")
             suffix = f"  ({', '.join(extra)})" if extra else ""
-            lines.append(f"  [{tid}] {subj}{suffix}")
+            lines.append(f"  [{_status_mark(st)}] [{tid}] {subj}{suffix}")
         return lines
 
     out_lines: List[str] = []
