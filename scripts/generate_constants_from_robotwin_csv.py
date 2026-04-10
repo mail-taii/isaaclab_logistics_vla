@@ -77,7 +77,7 @@ def _build_usd_path(parts: ModelIdParts) -> str:
     # 按你描述的命名规律：
     # f"{ASSET_ROOT_PATH}/objects_adapted/073_rubikscube/visual/base0.usd"
     return (
-        f'{{ASSET_ROOT_PATH}}/objects_adapted/{parts.numeric_id}_{parts.object_name_lower}/visual/{parts.variant_lower}.usd'
+        f'{{ASSET_ROOT_PATH}}/objects_final/{parts.numeric_id}_{parts.object_name_lower}/visual/{parts.variant_lower}.usd'
     )
 
 
@@ -290,7 +290,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--csv",
-        default=str(Path(__file__).resolve().parents[1] / "RoboTwin.csv"),
+        default=str(Path(__file__).resolve().parents[1] / "RoboTwin_dennse.csv"),
         help="输入 CSV 路径（默认：仓库根目录 RoboTwin.csv）",
     )
     parser.add_argument(
