@@ -4,6 +4,9 @@ import torch
 import numpy as np
 import time
 
+import math
+from isaaclab.utils.math import euler_xyz_from_quat
+
 
 class VLA_Evaluator:
     def __init__(self, env_cfg, policy='random', from_json=2):
@@ -98,6 +101,7 @@ class VLA_Evaluator:
         
         return actions
         
+
     def run_evaluation(self):
         i = 1
         # 环境 reset 时会根据 from_json 决定是随机生成、记录 JSON 还是读取 JSON
@@ -120,10 +124,21 @@ class VLA_Evaluator:
                 
                     default_state_tensor = robot_asset.data.root_state_w
                     
+<<<<<<< HEAD
+                    # print("\n" + "="*50)
+                    # print("Default Root State of 'robot' Asset:")
+                    # print(f"Shape: {default_state_tensor.shape}")
+                    # print(f"Data:\n{default_state_tensor[:, 0:3]}")
+                    # print(f"Reward :\n{rew}")
+                    # print("="*50 + "\n")
+
+                i+=1
+=======
                     #print("\n" + "="*50)
                     #print("Default Root State of 'robot' Asset:")
                     #print(f"Shape: {default_state_tensor.shape}")
                     #print(f"Data:\n{default_state_tensor[:, 0:3]}")
                     #print(f"Reward :\n{rew}")
                     #print("="*50 + "\n")
+>>>>>>> e6fbedf5955b2085cfaead67162f6f04f8ac3c15
             

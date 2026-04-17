@@ -19,8 +19,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab_logistics_vla.tasks.BaseOrderCommandTermCfg import OrderCommandTermCfg
 
-class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
-
+class Spawn_ss_mt_dense_CommandTerm(BaseOrderCommandTerm):
     
     def __init__(self, cfg: OrderCommandTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
@@ -54,6 +53,8 @@ class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
         m_max_per_sku = getattr(self.cfg, "max_instances_per_sku", 6)
         tray_config = getattr(self.cfg, "tray_or_not", [0, 0, 0])
         is_tray_scene = tray_config[0]
+
+        num_target_box = getattr(self.cfg, "num_target_box", 2) 
 
         BOX_X_LEN = WORK_BOX_PARAMS['X_LENGTH']
         BOX_Y_LEN = WORK_BOX_PARAMS['Y_LENGTH']
@@ -300,10 +301,8 @@ class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
         # 2. 填充 target_need_sku_num (订单需求量)
         # =========================================================
         # 单订单情况，所以目标箱索引恒为 0 (target_idx = 0)
-        target_idx = 0
-
-        # 先将该目标箱的所有需求清零，方便后续覆盖写入
-        self.target_need_sku_num[:, target_idx, :] = 0
+        # 先将所有目标箱的所有需求清零，方便后续覆盖写入
+        self.target_need_sku_num[:, :, :] = 0
 
         # 遍历每种 SKU，统计在各个环境的原料箱中实际生成了多少个
         for sku_idx, sku_name in enumerate(self.sku_names):
@@ -319,48 +318,64 @@ class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
             # max_available 的 shape: (num_envs,)
             max_available = valid_mask.sum(dim=1)
 
-            # 生成 0 ~ max_available 之间的随机整数作为需求量
-            # 原理：torch.rand 产生 [0, 1) 的随机浮点数，乘以 (max+1) 后向下取整，恰好是 [0, max] 的整数
-            rand_vals = torch.rand(self.num_envs, device=self.device)
-            need_num = (rand_vals * (max_available + 1).float()).long()
-
-            # 将计算出的随机需求量赋值给订单箱
-            self.target_need_sku_num[:, target_idx, sku_idx] = need_num
+            # 为每个目标箱独立生成随机需求
+            for target_idx in range(num_target_box):
+                rand_vals = torch.rand(self.num_envs, device=self.device)
+                
+                # 为了防止所有需求都集中在一个箱子或者超出总可用量
+                # 可以选择将总可用量按比例或随机分配给各个订单箱
+                # 简单实现：每个箱子都有概率需要，但总和不超过 max_available (此处需根据具体业务逻辑微调)
+                # 这里暂时采用简单随机分配
+                
+                # 简化逻辑：每个目标箱独立随机需要 0 到 max_available 的数量
+                # 为保证需求不超过库存，可以动态更新剩余可用量
+                
+                if target_idx == num_target_box - 1:
+                    # 最后一个目标箱
+                    need_num = (rand_vals * (max_available + 1).float()).long()
+                else:
+                    need_num = (rand_vals * (max_available).float()).long()
+                
+                # 安全起见，确保需求不超过剩余可用量
+                need_num = torch.minimum(need_num, max_available)  # 保留至少1个库存，避免完全被分配走
+                
+                self.target_need_sku_num[:, target_idx, sku_idx] = need_num
+                
+                # 减去已分配的数量，剩下的可供下一个目标箱分配
+                max_available -= need_num
 
 
         # =========================================================
         # 3. 防止出现“空订单”
-        # =========================================================
-        # 因为上面的算法允许需要 0 个物品，极端情况下某环境可能所有 SKU 都恰好被随机成了 0，导致该局无需抓取直接结束。
-        # 下面这段逻辑用于：如果某环境订单总量为 0，但场景里确实有物品，则强行随机指定 1 个需要的物品。
+        # ========================================================
+        for target_idx in range(self.num_targets):
+            # 计算每个环境需要的物品总数 shape: (num_envs,)
+            total_needed = self.target_need_sku_num[:, target_idx, :].sum(dim=1)
 
-        # 计算每个环境需要的物品总数 shape: (num_envs,)
-        total_needed = self.target_need_sku_num[:, target_idx, :].sum(dim=1)
+            # 找出当前目标箱为空订单的环境
+            empty_order_envs = (total_needed == 0)
 
-        # 找出空订单的环境
-        empty_order_envs = (total_needed == 0)
+            if empty_order_envs.any():
+                # 找出每个环境总共生成了多少可用物体
+                total_available_all_skus = (self.obj_to_source_id != -1).sum(dim=1)
 
-        if empty_order_envs.any():
-            # 找出每个环境总共生成了多少可用物体
-            total_available_all_skus = (self.obj_to_source_id != -1).sum(dim=1)
+                # 只有那些“场景里有东西，但订单却是空”的环境才需要被修正
+                needs_fix = empty_order_envs & (total_available_all_skus > 0)
 
-            # 只有那些“场景里有东西，但订单却是空”的环境才需要被修正
-            needs_fix = empty_order_envs & (total_available_all_skus > 0)
+                if needs_fix.any():
+                    # 获取需要修正的环境的索引
+                    fix_env_indices = needs_fix.nonzero(as_tuple=True)[0]
 
-            if needs_fix.any():
-                # 获取需要修正的环境的索引
-                fix_env_indices = needs_fix.nonzero(as_tuple=True)[0]
-
-                for env_i in fix_env_indices:
-                    # 找到该环境里数量 > 0 的有效 SKU 种类
-                    available_sku_mask = (self.obj_to_source_id[env_i] != -1)
-                    # 逆向反推该环境拥有的有效 SKU indices (直接遍历给某一个 +1)
-                    for s_idx, s_name in enumerate(self.sku_names):
-                        s_indices = self.sku_to_indices[s_name]
-                        if (self.obj_to_source_id[env_i, s_indices] != -1).any():
-                            # 只要发现这个 SKU 在场上有存货，就强行让订单要 1 个，然后跳出
-                            self.target_need_sku_num[env_i, target_idx, s_idx] = 1
-                            break
+                    for env_i in fix_env_indices:
+                        # 找到该环境里数量 > 0 的有效 SKU 种类
+                        available_sku_mask = (self.obj_to_source_id[env_i] != -1)
+                        # 逆向反推该环境拥有的有效 SKU indices (直接遍历给某一个 +1)
+                        for s_idx, s_name in enumerate(self.sku_names):
+                            s_indices = self.sku_to_indices[s_name]
+                            if (self.obj_to_source_id[env_i, s_indices] != -1).any():
+                                # 只要发现这个 SKU 在场上有存货，就强行让当前订单箱要 1 个，然后跳出
+                                self.target_need_sku_num[env_i, target_idx, s_idx] += 1
+                                break
 
 
     def _spawn_items_in_source_boxes(self, env_ids: Sequence[int]):
@@ -453,53 +468,61 @@ class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
 
     def _update_spawn_metrics(self):
         """
-        利用 object_states 的坐标判定结果，计算全局 Metrics
+        利用 object_states 的坐标判定结果，计算全局 Metrics (支持多目标箱)
         """
-        target_idx = 0 
-        
-        # =========================================================
-        # 1. 直接读取已更新好的需求矩阵与实际包含矩阵
-        # =========================================================
-        # shape: (num_envs, num_skus)
-        target_needs = self.target_need_sku_num[:, target_idx, :] 
-        actual_in_target = self.target_contain_sku_num[:, target_idx, :]
+        # 1. 核心张量提取
+        # shape: (num_envs, num_targets, num_skus)
+        target_needs = self.target_need_sku_num
+        actual_in_target = self.target_contain_sku_num
 
-        # =========================================================
-        # 2. 核心得分项计算
-        # =========================================================
-        # A. 正确抓取量：实际放进去的，且没有超过需求上限的部分 (多放的不算正分)
-        correct_picks = torch.minimum(actual_in_target, target_needs).sum(dim=1)
+        # 2. 核心得分项计算 (针对每个订单箱独立计算，然后在 dim=1 (targets) 上聚合或保持原维度，取决于你的奖励函数设计)
         
-        # B. 错误/多余抓取量：放错了 SKU，或者放对了 SKU 但超过了需求数量
-        wrong_picks = torch.clamp(actual_in_target - target_needs, min=0).sum(dim=1)
+        # A. 正确抓取量 (shape: num_envs, num_targets)
+        correct_picks_per_target = torch.minimum(actual_in_target, target_needs).sum(dim=-1)
         
-        # C. 物理掉落计数：状态被标记为 10 的物品总数
+        # B. 错误/多余抓取量 (shape: num_envs, num_targets)
+        wrong_picks_per_target = torch.clamp(actual_in_target - target_needs, min=0).sum(dim=-1)
+        
+        # C. 物理掉落计数 (全局唯一，shape: num_envs)
         dropped_count = (self.object_states == 10).sum(dim=1)
         
-        # D. 订单总需求量
-        total_needed = target_needs.sum(dim=1)
+        # D. 订单总需求量 (shape: num_envs, num_targets)
+        total_needed_per_target = target_needs.sum(dim=-1)
 
-        # =========================================================
-        # 3. 最终复合指标导出
-        # =========================================================
-        # 订单完成度: 0.0 ~ 1.0 (防止 total_needed 为 0 导致除以 0 报错)
-        completion_rate = torch.where(
-            total_needed > 0,
-            correct_picks.float() / total_needed.float(),
+        # 3. 复合指标导出
+        
+        # 每个订单箱的完成度: 0.0 ~ 1.0
+        completion_rate_per_target = torch.where(
+            total_needed_per_target > 0,
+            correct_picks_per_target.float() / total_needed_per_target.float(),
             torch.tensor(1.0, device=self.device) 
         )
         
-        # 完美成功标志: 需求全满，且没有任何错拿杂物
-        is_success = (correct_picks == total_needed) & (wrong_picks == 0)
+        # 全局总完成度 (可作为综合 Dense Reward)
+        total_correct_picks = correct_picks_per_target.sum(dim=-1)
+        total_needed_all = total_needed_per_target.sum(dim=-1)
+        
+        global_completion_rate = torch.where(
+            total_needed_all > 0,
+            total_correct_picks.float() / total_needed_all.float(),
+            torch.tensor(1.0, device=self.device)
+        )
+        
+        # 完美成功标志: 每个箱子的需求全满，且没有错拿
+        is_success_per_target = (correct_picks_per_target == total_needed_per_target) & (wrong_picks_per_target == 0)
+        
+        # 全局成功: 所有目标箱都成功
+        global_is_success = is_success_per_target.all(dim=-1)
 
-        # 组装 Metrics 字典，供 Reward(奖励函数) 或 Logger(日志) 直接读取
+        # 组装 Metrics 字典
         self.metrics = {
-            "completion_rate": completion_rate,       # float: [0.0, 1.0] 适合做 Dense Reward
-            "wrong_pick_count": wrong_picks,          # long: 错拿个数 适合做大惩罚项
-            "dropped_count": dropped_count,           # long: 掉落个数 适合触发 done 截断
-            "is_success": is_success.float(),         # float: 1.0/0.0 适合做最终评估指标
-            "correct_picks": correct_picks,
-            "total_needed": total_needed
+            "completion_rate_per_target": completion_rate_per_target, 
+            "global_completion_rate": global_completion_rate,
+            "wrong_pick_count": wrong_picks_per_target.sum(dim=-1), # 这里将错误总量相加，你也可以保留 per_target
+            "dropped_count": dropped_count,           
+            "is_success": global_is_success.float(),
+            "correct_picks": total_correct_picks,
+            "total_needed": total_needed_all
         }
         
         return self.metrics
@@ -509,6 +532,3 @@ class Spawn_ss_st_dense_CommandTerm(BaseOrderCommandTerm):
 
     def command(self):
         pass
-
-    def __str__(self) -> str:
-        return "ss_st_dense"

@@ -4,6 +4,7 @@ from isaaclab_logistics_vla.tasks import mdp
 from isaaclab_logistics_vla.utils.register import register
 
 from .Spawn_ss_st_dense_CommandTermCfg import Spawn_ss_st_dense_CommandTermCfg
+from .scene_cfg import DENSE_SCENE_OBJECTS
 
 ASSET_NAME = "robot"
 BODY_NAME = "base_link_underpan"
@@ -15,8 +16,7 @@ class Spawn_ss_st_dense_CommandsCfg:
     order_info = Spawn_ss_st_dense_CommandTermCfg(
         asset_name = ASSET_NAME,
         body_name=BODY_NAME,
-        objects=['cracker_box','sugar_box','tomato_soup_can',
-                 "CN_big","SF_small","empty_plastic_package","SF_big"],
+        objects=DENSE_SCENE_OBJECTS,
         source_boxes = ['s_box_1','s_box_2','s_box_3'],
         target_boxes = ['t_box_1','t_box_2','t_box_3'],
         num_active_skus = 3,
