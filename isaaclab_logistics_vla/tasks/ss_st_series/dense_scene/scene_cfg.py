@@ -15,13 +15,13 @@ from isaaclab_logistics_vla.utils.constant import *
 
 '''
 SKU_DEFINITIONS = {
-    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],60),
-    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],60),
-    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],60),
-    "CN_big": (CN_BIG_PARAMS['USD_PATH'],60),
-    "SF_small": (SF_SMALL_PARAMS['USD_PATH'],60),
-    "empty_plastic_package": (EMPTY_PLASTIC_PACKAGE_PARAMS['USD_PATH'],60),
-    "SF_big": (SF_BIG_PARAMS['USD_PATH'],60),
+    "cracker_box": (CRACKER_BOX_PARAMS['USD_PATH'],6),
+    "sugar_box":   (SUGER_BOX_PARAMS['USD_PATH'],6),
+    "tomato_soup_can": (TOMATO_SOUP_CAN_PARAMS['USD_PATH'],6),
+    "CN_big": (CN_BIG_PARAMS['USD_PATH'],6),
+    "SF_small": (SF_SMALL_PARAMS['USD_PATH'],6),
+    "empty_plastic_package": (EMPTY_PLASTIC_PACKAGE_PARAMS['USD_PATH'],6),
+    "SF_big": (SF_BIG_PARAMS['USD_PATH'],6),
 }
 '''
 

@@ -30,8 +30,6 @@ STACK_SCENE_OBJECTS = ['cracker_box', 'sugar_box', 'plastic_package',  'sf_small
                           'woodenblock_base0',
                     ]
 
-
-# 每种 SKU 的默认实例数（可按需调整，也可在 constant.py 每个 PARAMS 里加 STACK_COUNT 覆盖）
 DEFAULT_SKU_COUNT = 4
 
 # SKU 定义: (usd_path, count, scale)，由 STACK_SCENE_OBJECTS + constant.SKU_CONFIG 自动生成
@@ -46,7 +44,7 @@ for _sku_name in STACK_SCENE_OBJECTS:
 
 
 @configclass
-class Spawn_ss_st_stack_SceneCfg(BaseOrderSceneCfg):
+class Spawn_ss_mt_stack_SceneCfg(BaseOrderSceneCfg):
     robot: ArticulationCfg = register.load_robot('realman_franka_ee')().replace(prim_path="{ENV_REGEX_NS}/Robot")
     robot.init_state.pos = (0.96781, 2.28535, 0.216)
     robot.init_state.rot = (1, 0, 0, 0)
@@ -73,4 +71,4 @@ for sku_name, (usd_path, count, scale) in SKU_DEFINITIONS.items():
             init_state=RigidObjectCfg.InitialStateCfg(pos=(100, 100, 0), rot=(1, 0, 0, 0)),
         )
 
-        setattr(Spawn_ss_st_stack_SceneCfg, instance_name, obj_cfg)
+        setattr(Spawn_ss_mt_stack_SceneCfg, instance_name, obj_cfg)

@@ -42,6 +42,7 @@ class BaseOrderCommandTerm(CommandTerm):
 
         # 输入: cfg.objects 列表只包含 SKU 名称，例如 ["cracker_box", "sugar_box"]
         self.sku_names = cfg.objects # 记录原始 SKU 清单
+        print("cfg.objects",cfg.objects)
 
         self._discover_object_instances(env, cfg.objects)    # 填充object_names object_assets sku_to_indices
 
@@ -154,6 +155,7 @@ class BaseOrderCommandTerm(CommandTerm):
         假设实例命名规范为: "{sku_name}_{index}" 或 "{sku_name}_X"
         """
         scene_keys = list(env.scene.keys())
+        print(scene_keys)
         current_global_idx = 0
 
         for sku_name in sku_list:
